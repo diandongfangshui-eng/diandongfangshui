@@ -1,0 +1,9 @@
+#!/bin/sh
+
+/etc/init.d/odhcpd stop 2>/dev/null
+/etc/init.d/odhcpd disable 2>/dev/null
+
+uci set network.wan6.disabled='1' 2>/dev/null
+uci commit network 2>/dev/null
+
+exit 0

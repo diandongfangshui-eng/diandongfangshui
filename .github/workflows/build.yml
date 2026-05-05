@@ -1,0 +1,66 @@
+name: Build K2P Minimal OpenWrt
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential libncurses5-dev libncursesw5-dev zlib1g-dev gawk git gettext libssl-dev xsltproc wget unzip python3 python3-distutils file zstd
+
+      - name: Download ImageBuilder
+        run: |
+          wget https://downloads.openwrt.org/releases/24.10.1/targets/ramips/mt7621/openwrt-imagebuilder-24.10.1-ramips-mt7621.Linux-x86_64.tar.zst
+          tar --zstd -xf openwrt-imagebuilder-24.10.1-ramips-mt7621.Linux-x86_64.tar.zst
+          mv openwrt-imagebuilder-24.10.1-ramips-mt7621.Linux-x86_64 imagebuilder
+
+      - name: Build firmware
+        run: |
+          cd imagebuilder
+          make image PROFILE=phicomm_k2p \
+            FILES=../files \
+            PACKAGES="\
+            base-files \
+            busybox \
+            dnsmasq \
+            dropbear \
+            firewall4 \
+            fstools \
+            kmod-gpio-button-hotplug \
+            libc \
+            libgcc \
+            netifd \
+            opkg \
+            uci \
+            uclient-fetch \
+            wpad-basic-mbedtls \
+            ca-bundle \
+            ca-certificates \
+            curl \
+            iptables-nft \
+            iptables-mod-nat-extra \
+            kmod-nft-nat \
+            kmod-nft-compat \
+            kmod-ipt-nat \
+            -ppp \
+            -ppp-mod-pppoe \
+            -luci \
+            -luci-ssl \
+            -luci-proto-ppp \
+            -odhcp6c \
+            -odhcpd-ipv6only \
+            -luci-proto-ipv6"
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: k2p-minimal-openwrt
+          path: imagebuilder/bin/targets/ramips/mt7621/*phicomm_k2p*squashfs-sysupgrade.bin

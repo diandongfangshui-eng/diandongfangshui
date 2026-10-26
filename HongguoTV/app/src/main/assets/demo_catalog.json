@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "dramas": [
+    {
+      "id": "demo-bunny",
+      "title": "Big Buck Bunny · 公开演示",
+      "category": "演示片源",
+      "description": "开放测试影片，仅用于验证电视端搜索、播放、选集和自动连播。这不是红果短剧的内容。",
+      "poster": "https://storage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg",
+      "episodes": [
+        {"title": "第一段 · Big Buck Bunny", "url": "https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"},
+        {"title": "第二段 · For Bigger Joyrides", "url": "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4"}
+      ]
+    },
+    {
+      "id": "demo-dream",
+      "title": "Elephants Dream · 公开演示",
+      "category": "演示片源",
+      "description": "公开视频测试条目。真实短剧需要导入你拥有合法使用权限的片单。",
+      "poster": "https://storage.googleapis.com/gtv-videos-bucket/sample/images/ElephantsDream.jpg",
+      "episodes": [
+        {"title": "第 1 集", "url": "https://storage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"}
+      ]
+    },
+    {
+      "id": "demo-sintel",
+      "title": "Sintel · 公开演示",
+      "category": "演示片源",
+      "description": "用于测试播放器的免费样片；不冒充平台正版短剧。",
+      "poster": "https://storage.googleapis.com/gtv-videos-bucket/sample/images/Sintel.jpg",
+      "episodes": [
+        {"title": "第 1 集", "url": "https://storage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4"}
+      ]
+    }
+  ]
+}

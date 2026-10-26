@@ -141,7 +141,7 @@ public final class PlayerActivity extends Activity {
     private void playEpisode(int episode) {
         if (player == null || episode < 0 || episode >= drama.episodes.size()) return;
         switching = true;
-        if (player.getMediaItemCount() > 0) savePosition();
+        if (player.getMediaItemCount() > 0 && player.getPlaybackState() != Player.STATE_ENDED) savePosition();
         currentEpisode = episode;
         SharedPreferences prefs = CatalogStore.prefs(this);
         String previous = prefs.getString("recent_ids", "");

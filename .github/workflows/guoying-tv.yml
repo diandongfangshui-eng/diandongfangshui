@@ -33,7 +33,7 @@ jobs:
           gradle-version: '8.11.1'
       - name: Build installable debug APK
         working-directory: HongguoTV
-        run: gradle --no-daemon :app:assembleDebug
+        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
       - uses: actions/upload-artifact@v4
         with:
           name: GuoyingTV-AndroidTV-debug-APK

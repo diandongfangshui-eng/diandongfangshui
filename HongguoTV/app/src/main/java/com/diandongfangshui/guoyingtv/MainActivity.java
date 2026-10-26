@@ -430,8 +430,8 @@ public final class MainActivity extends Activity {
                 episodes.addView(currentRow, rp);
             }
             final int episodeIndex = i;
-            Drama.Episode ep = drama.episodes.get(i);
-            TextView item = button(ep.episodeIndex + (ep.isPlayable() ? " ▶" : " ·"),
+            Drama.Episode episodeData = drama.episodes.get(i);
+            TextView item = button(episodeData.episodeIndex + (episodeData.isPlayable() ? " ▶" : " ·"),
                     () -> openPlayer(drama, episodeIndex));
             LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(dp(91), dp(50));
             ep.rightMargin = dp(10);

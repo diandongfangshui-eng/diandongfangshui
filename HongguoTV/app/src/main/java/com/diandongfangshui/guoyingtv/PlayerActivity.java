@@ -37,9 +37,10 @@ public final class PlayerActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_KEEP_SCREEN_ON);
+                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
         try {
             drama = Drama.fromJson(new JSONObject(getIntent().getStringExtra("drama")));
             currentEpisode = Math.max(0, Math.min(

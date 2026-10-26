@@ -385,9 +385,14 @@ public final class MainActivity extends Activity {
         info.addView(desc);
         int saved = CatalogStore.prefs(this).getInt("last_" + drama.id, 0);
         if (saved < 0 || saved >= drama.episodes.size()) saved = 0;
-        final int resumeIndex = saved;
-        TextView play = button("▶  播放 / 继续第 " + (resumeIndex + 1) + " 集",
-                () -> openPlayer(drama, resumeIndex));
+        final int resumeIndex = drama.firstPlayableEpisode(saved);
+        TextView play = button(resumeIndex >= 0
+                ? "▶  播放 / 继续第 " + drama.episodes.get(resumeIndex).episodeIndex + " 集"
+                : "尚未取得授权播放地址",
+                () -> {
+                    if (resumeIndex >= 0) openPlayer(drama, resumeIndex);
+                    else Toast.makeText(this, "已识别剧集元数据，尚缺少授权播放地址", Toast.LENGTH_LONG).show();
+                });
         LinearLayout.LayoutParams playParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, dp(55));
         playParams.topMargin = dp(23);
@@ -404,6 +409,14 @@ public final class MainActivity extends Activity {
                 ViewGroup.LayoutParams.WRAP_CONTENT, dp(52));
         favParams.topMargin = dp(10);
         info.addView(favorite, favParams);
+        if (drama.metadataAdapter) {
+            TextView note = text(drama.hasPlayableEpisodes()
+                    ? "导入的剧集已配置独立授权播放地址。"
+                    : "仅有剧集元数据：video_id 不是可播放 URL。", 14,
+                    Color.rgb(255, 202, 139), false);
+            note.setPadding(0, dp(12), 0, 0);
+            info.addView(note);
+        }
         sectionTitle(col, "选择剧集");
         LinearLayout episodes = vertical();
         LinearLayout currentRow = null;
@@ -417,7 +430,9 @@ public final class MainActivity extends Activity {
                 episodes.addView(currentRow, rp);
             }
             final int episodeIndex = i;
-            TextView item = button(String.valueOf(i + 1), () -> openPlayer(drama, episodeIndex));
+            Drama.Episode ep = drama.episodes.get(i);
+            TextView item = button(ep.episodeIndex + (ep.isPlayable() ? " ▶" : " ·"),
+                    () -> openPlayer(drama, episodeIndex));
             LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(dp(91), dp(50));
             ep.rightMargin = dp(10);
             currentRow.addView(item, ep);
@@ -517,6 +532,11 @@ public final class MainActivity extends Activity {
     }
 
     private void openPlayer(Drama drama, int episode) {
+        if (episode < 0 || episode >= drama.episodes.size()
+                || !drama.episodes.get(episode).isPlayable()) {
+            Toast.makeText(this, "本集尚无授权的 HTTPS 媒体地址", Toast.LENGTH_LONG).show();
+            return;
+        }
         Intent intent = new Intent(this, PlayerActivity.class);
         intent.putExtra("drama", drama.toJson().toString());
         intent.putExtra("episode", episode);

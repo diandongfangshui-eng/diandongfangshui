@@ -128,7 +128,8 @@ public final class PlayerActivity extends Activity {
     }
 
     private void savePosition() {
-        if (player == null || drama == null) return;
+        if (player == null || drama == null
+                || player.getPlaybackState() == Player.STATE_ENDED) return;
         long pos = Math.max(0L, player.getCurrentPosition());
         CatalogStore.prefs(this).edit()
                 .putLong(progressKey(currentEpisode), pos)
@@ -141,6 +142,10 @@ public final class PlayerActivity extends Activity {
 
     private void playEpisode(int episode) {
         if (player == null || episode < 0 || episode >= drama.episodes.size()) return;
+        if (!drama.episodes.get(episode).isPlayable()) {
+            Toast.makeText(this, "这一集尚无可播放的授权媒体地址", Toast.LENGTH_LONG).show();
+            return;
+        }
         switching = true;
         if (player.getMediaItemCount() > 0 && player.getPlaybackState() != Player.STATE_ENDED) savePosition();
         currentEpisode = episode;

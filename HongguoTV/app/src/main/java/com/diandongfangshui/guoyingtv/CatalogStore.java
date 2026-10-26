@@ -104,13 +104,14 @@ public final class CatalogStore {
 
     private static List<Drama> parse(String text) throws JSONException {
         JSONObject root = new JSONObject(text);
-        if (root.optInt("version", -1) != 1) throw new JSONException("Expected version=1");
+        int version = root.optInt("version", -1);
+        if (version != 1 && version != 2) throw new JSONException("Expected version=1 or version=2");
         JSONArray dramas = root.getJSONArray("dramas");
         if (dramas.length() > 300) throw new JSONException("Too many entries");
         List<Drama> parsed = new ArrayList<>();
         Set<String> ids = new HashSet<>();
         for (int i = 0; i < dramas.length(); i++) {
-            Drama drama = Drama.fromJson(dramas.getJSONObject(i));
+            Drama drama = Drama.fromJson(dramas.getJSONObject(i), version);
             if (!ids.add(drama.id)) throw new JSONException("Duplicate drama id: " + drama.id);
             parsed.add(drama);
         }

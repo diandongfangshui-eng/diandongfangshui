@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "dramas": [
+    {
+      "series_id": "example-authorized-series-001",
+      "series_title": "示例短剧：仅用于演示元数据结构",
+      "series_cover": "",
+      "category": "示例",
+      "description": "该剧名与 ID 均为虚构。此样本只演示字段映射，不包含红果真实内容或播放地址。",
+      "episode_count": 2,
+      "episodes": [
+        {"episode_index": 1, "video_id": "sample-video-id-001", "title": "第 1 集"},
+        {"episode_index": 2, "video_id": "sample-video-id-002", "title": "第 2 集"}
+      ]
+    }
+  ]
+}

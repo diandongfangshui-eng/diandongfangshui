@@ -1,0 +1,42 @@
+name: Package official JADX CLI for offline APK inspection
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [hongguo-tv-standalone]
+    paths: ['.github/workflows/jadx-toolchain.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download official JADX release from upstream GitHub
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json,urllib.request
+          url = 'https://api.github.com/repos/skylot/jadx/releases/latest'
+          req = urllib.request.Request(url, headers={'Accept':'application/vnd.github+json','User-Agent':'GuoyingTV-Research-CLI'})
+          with urllib.request.urlopen(req, timeout=40) as resp: release=json.load(resp)
+          candidates=[a for a in release['assets'] if a['name'].startswith('jadx-') and a['name'].endswith('.zip')]
+          if not candidates: raise SystemExit('No official jadx ZIP asset')
+          asset=next((a for a in candidates if 'gui' not in a['name'].lower()),candidates[0])
+          print('Version',release['tag_name'],'Asset',asset['name'])
+          req = urllib.request.Request(asset['browser_download_url'],headers={'User-Agent':'GuoyingTV-Research-CLI'})
+          with urllib.request.urlopen(req,timeout=90) as response,open('/tmp/jadx.zip','wb') as out:
+              import shutil;shutil.copyfileobj(response,out)
+          PY
+          unzip -t /tmp/jadx.zip | tail -1
+          sha256sum /tmp/jadx.zip | tee jadx_sha256.txt
+          cp /tmp/jadx.zip jadx-official-toolchain.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: official-jadx-cli-toolchain
+          path: |
+            jadx-official-toolchain.zip
+            jadx_sha256.txt
+          retention-days: 1

@@ -10,7 +10,17 @@
         android:icon="@drawable/tv_icon"
         android:banner="@drawable/tv_banner"
         android:theme="@android:style/Theme.Material.NoActionBar"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="true">
+        <!-- Cleartext HTTP is enabled only for explicitly configured private-LAN bridge addresses.
+             BridgeApi enforces RFC1918 literal IPv4 and rejects redirects / userinfo. -->
+        <activity
+            android:name=".BridgePlayerActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+        <activity
+            android:name=".BridgeActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
         <activity
             android:name=".PlayerActivity"
             android:exported="false"

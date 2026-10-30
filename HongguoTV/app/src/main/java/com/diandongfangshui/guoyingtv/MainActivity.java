@@ -131,9 +131,13 @@ public final class MainActivity extends Activity {
         TextView logo = text("●  果影 TV", 27, WHITE, true);
         logo.setPadding(0, 0, 0, dp(32));
         sidebar.addView(logo);
-        String[] tabs = {"精选", "局域网片库", "分类", "搜索", "追剧收藏", "最近观看", "设置"};
+        String[] tabs = {"精选", "红果官网片库", "局域网片库", "分类", "搜索", "追剧收藏", "最近观看", "设置"};
         for (String tab : tabs) {
             TextView nav = button(tab, () -> {
+                if ("红果官网片库".equals(tab)) {
+                    startActivity(new Intent(this, HongguoOfficialActivity.class));
+                    return;
+                }
                 if ("局域网片库".equals(tab)) {
                     startActivity(new Intent(this, BridgeActivity.class));
                     return;

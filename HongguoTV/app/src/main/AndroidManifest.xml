@@ -14,6 +14,10 @@
         <!-- Cleartext HTTP is enabled only for explicitly configured private-LAN bridge addresses.
              BridgeApi enforces RFC1918 literal IPv4 and rejects redirects / userinfo. -->
         <activity
+            android:name=".HongguoOfficialActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+        <activity
             android:name=".BridgePlayerActivity"
             android:exported="false"
             android:screenOrientation="landscape" />

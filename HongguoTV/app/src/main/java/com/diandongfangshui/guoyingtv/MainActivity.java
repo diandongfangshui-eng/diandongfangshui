@@ -53,6 +53,7 @@ public final class MainActivity extends Activity {
     private final PublicWebsiteRepository service = new PublicWebsiteRepository();
     private int requestVersion = 0;
     private boolean publicCatalog = true;
+    private int categoryPage = 1;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -297,6 +298,25 @@ public final class MainActivity extends Activity {
 
     private void categories(LinearLayout col) {
         heading(col, "题材分类", "按服务返回的题材分类查看当前目录");
+        if (publicCatalog) {
+            col.addView(button("官网真人剧 · 第 " + categoryPage + " 页（加载下一页）", () -> {
+                int page = categoryPage;
+                IMAGES.execute(() -> {
+                    try {
+                        List<Drama> next = service.category("real-drama", page);
+                        runOnUiThread(() -> {
+                            if (isFinishing() || isDestroyed()) return;
+                            Set<String> ids = new HashSet<>();
+                            for (Drama d : catalog) ids.add(d.id);
+                            for (Drama d : next) if (ids.add(d.id)) catalog.add(d);
+                            if (!next.isEmpty()) categoryPage++;
+                            Toast.makeText(this, next.isEmpty() ? "没有更多内容" : "已加载官网第 " + page + " 页", Toast.LENGTH_SHORT).show();
+                            renderPage();
+                        });
+                    } catch (Exception e) { runOnUiThread(() -> Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show()); }
+                });
+            }));
+        }
         Map<String, List<Drama>> groups = new LinkedHashMap<>();
         for (Drama drama : catalog) {
             groups.computeIfAbsent(drama.genre, k -> new ArrayList<>()).add(drama);
@@ -367,7 +387,7 @@ public final class MainActivity extends Activity {
             label.setMaxLines(2);
             label.setPadding(0, dp(9), 0, 0);
             card.addView(label);
-            TextView note = text(drama.episodes.size() + " 集  ·  " + drama.genre, 11, MUTED, false);
+            TextView note = text(drama.toJson().optInt("episode_cnt", drama.episodes.size()) + " 集  ·  " + drama.genre, 11, MUTED, false);
             note.setPadding(0, dp(5), 0, 0);
             card.addView(note);
             card.setOnFocusChangeListener((view, focus) -> {
@@ -592,6 +612,8 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams resetP = new LinearLayout.LayoutParams(dp(235), dp(55));
         resetP.topMargin = dp(11);
         col.addView(reset, resetP);
+        sectionTitle(col, "账号授权状态");
+        col.addView(text(service.status() + "。收藏与原生播放器进度保存在当前电视；官网网页进度由网站管理。", 16, MUTED, false));
         sectionTitle(col, "使用说明");
         TextView instructions = text("● 支持 HTTPS MP4 / HLS(m3u8)，选集与自动连播。\n\n"
                 + "● 示例 JSON 格式见 GitHub 仓库；片单不是直接的视频列表，每部剧都有独立 episodes。\n\n"

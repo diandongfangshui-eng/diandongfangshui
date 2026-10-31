@@ -34,6 +34,8 @@ public final class PlayerActivity extends Activity {
     private final List<Float> speeds = new ArrayList<>();
     private int speedIndex = 0;
     private boolean switching = false;
+    private int retries = 0;
+    private final android.os.Handler recovery = new android.os.Handler(android.os.Looper.getMainLooper());
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -116,6 +118,23 @@ public final class PlayerActivity extends Activity {
             }
 
             @Override public void onPlayerError(PlaybackException error) {
+                int status = 0;
+                for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+                    if (cause instanceof androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)
+                        status = ((androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) cause).responseCode;
+                }
+                if (PlaybackPolicy.retry(retries, status)) {
+                    retries++;
+                    long resume = player.getCurrentPosition();
+                    int failedEpisode = currentEpisode;
+                    playbackHint.setText("网络或播放错误，正在重试 " + retries + "/2");
+                    recovery.postDelayed(() -> {
+                        if (player != null && currentEpisode == failedEpisode) {
+                            player.prepare(); player.seekTo(Math.max(0, resume)); player.play();
+                        }
+                    }, retries * 1500L);
+                    return;
+                }
                 playbackHint.setText("播放失败：" + error.getErrorCodeName()
                         + "。请检查片源是否可公开访问、支持当前设备解码。返回键退出");
             }
@@ -146,6 +165,8 @@ public final class PlayerActivity extends Activity {
             Toast.makeText(this, "这一集尚无可播放的授权媒体地址", Toast.LENGTH_LONG).show();
             return;
         }
+        recovery.removeCallbacksAndMessages(null);
+        retries = 0;
         switching = true;
         if (player.getMediaItemCount() > 0 && player.getPlaybackState() != Player.STATE_ENDED) savePosition();
         currentEpisode = episode;
@@ -164,7 +185,7 @@ public final class PlayerActivity extends Activity {
         player.setMediaItem(MediaItem.fromUri(data.url));
         player.prepare();
         long lastPosition = prefs.getLong(progressKey(episode), 0L);
-        if (lastPosition > 0) player.seekTo(lastPosition);
+        if (lastPosition > 0) player.seekTo(PlaybackPolicy.resume(lastPosition, player.getDuration()));
         player.setPlaybackSpeed(speeds.get(speedIndex));
         player.play();
         switching = false;
@@ -229,6 +250,7 @@ public final class PlayerActivity extends Activity {
     }
 
     @Override protected void onPause() {
+        recovery.removeCallbacksAndMessages(null);
         if (player != null) {
             savePosition();
             player.pause();
@@ -237,6 +259,7 @@ public final class PlayerActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        recovery.removeCallbacksAndMessages(null);
         if (player != null) {
             savePosition();
             player.release();

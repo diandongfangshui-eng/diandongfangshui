@@ -50,6 +50,9 @@ public final class MainActivity extends Activity {
     private Drama selected = null;
     private boolean isDemo = true;
     private boolean loaded = false;
+    private final PublicWebsiteRepository service = new PublicWebsiteRepository();
+    private int requestVersion = 0;
+    private boolean publicCatalog = true;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -131,7 +134,7 @@ public final class MainActivity extends Activity {
         TextView logo = text("●  果影 TV", 27, WHITE, true);
         logo.setPadding(0, 0, 0, dp(32));
         sidebar.addView(logo);
-        String[] tabs = {"精选", "红果官网片库", "局域网片库", "分类", "搜索", "追剧收藏", "最近观看", "设置"};
+        String[] tabs = {"精选", "热播榜", "红果官网片库", "局域网片库", "分类", "搜索", "追剧收藏", "最近观看", "设置"};
         for (String tab : tabs) {
             TextView nav = button(tab, () -> {
                 if ("红果官网片库".equals(tab)) {
@@ -144,7 +147,7 @@ public final class MainActivity extends Activity {
                 }
                 selected = null;
                 currentTab = tab;
-                renderPage();
+                if ("热播榜".equals(tab)) loadPublic(true); else renderPage();
             });
             if (currentTab.equals(tab) && selected == null) {
                 nav.setTextColor(ACCENT);
@@ -162,17 +165,49 @@ public final class MainActivity extends Activity {
     }
 
     private void loadCatalog() {
-        loaded = false;
-        status = "正在加载片单…";
-        renderPage();
+        publicCatalog = CatalogStore.prefs(this).getString(CatalogStore.CATALOG_URL, "").trim().isEmpty();
+        if (publicCatalog) { loadPublic(false); return; }
         CatalogStore.load(this, result -> {
-            catalog.clear();
-            catalog.addAll(result.dramas);
-            status = result.notice;
-            isDemo = result.demo;
-            loaded = true;
-            selected = null;
-            renderPage();
+            if (isFinishing() || isDestroyed()) return;
+            catalog.clear(); catalog.addAll(result.dramas);
+            status = result.notice; isDemo = result.demo; loaded = true; selected = null; renderPage();
+        });
+    }
+
+    private void loadPublic(boolean rank) {
+        int version = ++requestVersion;
+        status = "正在连接红果公开网站…"; renderPage();
+        IMAGES.execute(() -> {
+            try {
+                List<Drama> data = rank ? service.ranking(1) : service.home(1);
+                runOnUiThread(() -> {
+                    if (version != requestVersion || isFinishing() || isDestroyed()) return;
+                    catalog.clear(); catalog.addAll(data); isDemo = false; loaded = true;
+                    status = "官网实时目录 · " + data.size() + " 部 · 网页开放内容由平台决定";
+                    selected = null; renderPage();
+                });
+            } catch (Exception error) { runOnUiThread(() -> {
+                if (version != requestVersion || isFinishing() || isDestroyed()) return;
+                status = "官网读取失败：" + error.getMessage(); loaded = true; isDemo = false; renderPage();
+            }); }
+        });
+    }
+
+    private void selectDrama(Drama drama) {
+        if (!publicCatalog) { selected = drama; renderPage(); return; }
+        int version = ++requestVersion;
+        status = "正在读取分集…";
+        Toast.makeText(this, status, Toast.LENGTH_SHORT).show();
+        IMAGES.execute(() -> {
+            try {
+                Drama full = service.detail(drama.id);
+                runOnUiThread(() -> {
+                    if (version != requestVersion || isFinishing() || isDestroyed()) return;
+                    selected = full; renderPage();
+                });
+            } catch (Exception e) { runOnUiThread(() -> {
+                if (!isFinishing() && !isDestroyed()) Toast.makeText(this, "详情读取失败：" + e.getMessage(), Toast.LENGTH_LONG).show();
+            }); }
         });
     }
 
@@ -235,7 +270,7 @@ public final class MainActivity extends Activity {
     }
 
     private void home(LinearLayout col) {
-        heading(col, "今天看点什么？", status);
+        heading(col, "热播榜".equals(currentTab) ? "官网热播榜" : "今天看点什么？", status);
         if (isDemo) {
             TextView warning = text("演示模式：这里是公开测试影片，并非红果正版剧库。在「设置」导入有权限的片单后即可替换。", 14, Color.rgb(255, 202, 139), false);
             warning.setPadding(dp(18), dp(12), dp(18), dp(12));
@@ -244,6 +279,7 @@ public final class MainActivity extends Activity {
         }
         if (catalog.isEmpty()) {
             sectionTitle(col, "暂无剧集");
+            col.addView(button("重试连接官网", () -> loadPublic(false)));
             col.addView(button("打开设置并导入片单", () -> { currentTab = "设置"; renderPage(); }));
             return;
         }
@@ -260,7 +296,7 @@ public final class MainActivity extends Activity {
     }
 
     private void categories(LinearLayout col) {
-        heading(col, "题材分类", "按片单提供的分类查看剧集");
+        heading(col, "题材分类", "按服务返回的题材分类查看当前目录");
         Map<String, List<Drama>> groups = new LinkedHashMap<>();
         for (Drama drama : catalog) {
             groups.computeIfAbsent(drama.genre, k -> new ArrayList<>()).add(drama);
@@ -341,7 +377,7 @@ public final class MainActivity extends Activity {
                 card.setScaleX(focus ? 1.035f : 1f);
                 card.setScaleY(focus ? 1.035f : 1f);
             });
-            card.setOnClickListener(v -> { selected = drama; renderPage(); });
+            card.setOnClickListener(v -> selectDrama(drama));
         }
         col.addView(hsv, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(278)));
@@ -375,7 +411,7 @@ public final class MainActivity extends Activity {
     }
 
     private void detail(LinearLayout col, Drama drama) {
-        heading(col, drama.title, drama.genre + " · 全 " + drama.episodes.size() + " 集");
+        heading(col, drama.title, drama.genre + " · 目录 " + drama.episodes.size() + " 集");
         LinearLayout head = new LinearLayout(this);
         head.setOrientation(LinearLayout.HORIZONTAL);
         col.addView(head);
@@ -391,6 +427,14 @@ public final class MainActivity extends Activity {
         TextView desc = text(drama.description, 17, MUTED, false);
         desc.setLineSpacing(dp(5), 1f);
         info.addView(desc);
+        if (publicCatalog) {
+            info.addView(button("在官网播放器中打开", () -> {
+                Intent web = new Intent(this, HongguoOfficialActivity.class);
+                web.putExtra("official_url", "https://hongguoduanju.com/player/" + drama.id);
+                startActivity(web);
+            }));
+            info.addView(text("官网未公开可供原生播放器使用的媒体地址；可播放范围及登录由官网决定。", 14, MUTED, false));
+        }
         int saved = CatalogStore.prefs(this).getInt("last_" + drama.id, 0);
         if (saved < 0 || saved >= drama.episodes.size()) saved = 0;
         final int resumeIndex = drama.firstPlayableEpisode(saved);
@@ -450,7 +494,7 @@ public final class MainActivity extends Activity {
     }
 
     private void search(LinearLayout col) {
-        heading(col, "搜索短剧", "搜索本机当前片单，使用电视遥控器输入关键词");
+        heading(col, "搜索短剧", "使用电视遥控器输入关键词；公开网站搜索能力以平台开放为准");
         EditText input = new EditText(this);
         input.setSingleLine(true);
         input.setTextColor(WHITE);
@@ -477,6 +521,24 @@ public final class MainActivity extends Activity {
     }
 
     private void showSearchResults(LinearLayout container, String query) {
+        if (publicCatalog && !query.trim().isEmpty()) {
+            int version = ++requestVersion;
+            container.removeAllViews(); sectionTitle(container, "正在搜索…");
+            IMAGES.execute(() -> {
+                try {
+                    List<Drama> found = service.search(query.trim(), 1);
+                    runOnUiThread(() -> {
+                        if (version != requestVersion || !container.isAttachedToWindow()) return;
+                        container.removeAllViews();
+                        if (found.isEmpty()) sectionTitle(container, "未找到结果"); else addRow(container, "搜索结果", found);
+                    });
+                } catch (Exception e) { runOnUiThread(() -> {
+                    if (version != requestVersion || !container.isAttachedToWindow()) return;
+                    container.removeAllViews(); sectionTitle(container, "搜索受限：" + e.getMessage());
+                }); }
+            });
+            return;
+        }
         container.removeAllViews();
         String needle = query.trim().toLowerCase(java.util.Locale.ROOT);
         List<Drama> found = new ArrayList<>();
@@ -520,7 +582,7 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(dp(235), dp(55));
         sp.topMargin = dp(15);
         col.addView(save, sp);
-        TextView reset = button("恢复公开演示片单", () -> {
+        TextView reset = button("恢复官网实时目录", () -> {
             CatalogStore.prefs(this).edit().remove(CatalogStore.CATALOG_URL).apply();
             deleteFile("catalog-cache.json");
             selected = null;
@@ -542,7 +604,11 @@ public final class MainActivity extends Activity {
     private void openPlayer(Drama drama, int episode) {
         if (episode < 0 || episode >= drama.episodes.size()
                 || !drama.episodes.get(episode).isPlayable()) {
-            Toast.makeText(this, "本集尚无授权的 HTTPS 媒体地址", Toast.LENGTH_LONG).show();
+            if (publicCatalog && episode >= 0 && episode < drama.episodes.size()) {
+                Intent web = new Intent(this, HongguoOfficialActivity.class);
+                web.putExtra("official_url", "https://hongguoduanju.com/player/" + drama.id + "/" + drama.episodes.get(episode).videoId);
+                startActivity(web);
+            } else Toast.makeText(this, "本集尚无授权的 HTTPS 媒体地址", Toast.LENGTH_LONG).show();
             return;
         }
         Intent intent = new Intent(this, PlayerActivity.class);

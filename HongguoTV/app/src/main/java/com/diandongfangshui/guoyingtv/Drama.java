@@ -70,7 +70,7 @@ public final class Drama {
         String poster = obj.optString(v2 ? "series_cover" : "poster", "").trim();
         if (!poster.isEmpty() && !UrlPolicy.isHttpsUrl(poster)) poster = "";
         JSONArray array = obj.getJSONArray("episodes");
-        if (array.length() == 0 || array.length() > 300) {
+        if (array.length() == 0 || array.length() > 2000) {
             throw new JSONException("Episode count invalid: " + id);
         }
         List<Episode> episodes = new ArrayList<>();

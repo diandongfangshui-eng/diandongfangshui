@@ -92,7 +92,7 @@ public final class PublicWebsiteRepository implements ContentServices.CatalogRep
     }
     public List<Drama> category(String route,int page) throws Exception {
         if(!route.matches("[a-z-]+")) throw new IllegalArgumentException("分类参数无效");
-        return list(request("/category/"+route+"?page="+Math.max(1,page)).optJSONArray("recommendList"));
+        return list(request("/category/"+route+(page<=1?"":"?page="+page)).optJSONArray("recommendList"));
     }
     public List<String> categories() throws Exception {
         JSONArray selectors=request("/category/real-drama").getJSONArray("selectorList");

@@ -188,7 +188,8 @@ public final class HongguoOfficialActivity extends Activity {
             }
             @Override public void onHideCustomView() { exitFullscreen(); }
         });
-        loadOfficial(HOME);
+        String target = getIntent().getStringExtra("official_url");
+        loadOfficial(target != null && isOfficialPage(Uri.parse(target)) ? target : HOME);
         browser.requestFocus();
     }
 

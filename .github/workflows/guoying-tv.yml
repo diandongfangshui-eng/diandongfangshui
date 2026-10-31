@@ -3,7 +3,7 @@ name: 果影 TV - Android TV APK
 on:
   workflow_dispatch:
   push:
-    branches: [hongguo-tv-standalone]
+    branches: [hongguo-tv-standalone, hongguo-tv-rea-native]
     paths:
       - 'HongguoTV/**'
       - '.github/workflows/guoying-tv.yml'
@@ -40,3 +40,4 @@ jobs:
           path: HongguoTV/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
+

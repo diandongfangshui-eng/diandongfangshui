@@ -123,7 +123,11 @@ public final class MainActivity extends Activity {
         sidebar = vertical();
         sidebar.setBackgroundColor(Color.rgb(20, 25, 35));
         sidebar.setPadding(dp(22), dp(24), dp(18), dp(20));
-        shell.addView(sidebar, new LinearLayout.LayoutParams(dp(202),
+        ScrollView sidebarScroll = new ScrollView(this);
+        sidebarScroll.setFillViewport(true);
+        sidebarScroll.setVerticalScrollBarEnabled(false);
+        sidebarScroll.addView(sidebar);
+        shell.addView(sidebarScroll, new LinearLayout.LayoutParams(dp(202),
                 ViewGroup.LayoutParams.MATCH_PARENT));
         stage = new FrameLayout(this);
         shell.addView(stage, new LinearLayout.LayoutParams(0,
@@ -160,7 +164,7 @@ public final class MainActivity extends Activity {
         }
         View spacer = new View(this);
         sidebar.addView(spacer, new LinearLayout.LayoutParams(1, 0, 1));
-        TextView legal = text("非官方独立客户端\n仅支持授权片单", 11, MUTED, false);
+        TextView legal = text("非官方独立客户端\n播放权限由平台决定", 11, MUTED, false);
         legal.setLineSpacing(dp(5), 1f);
         sidebar.addView(legal);
     }

@@ -453,7 +453,7 @@ public final class MainActivity extends Activity {
                 web.putExtra("official_url", "https://hongguoduanju.com/player/" + drama.id);
                 startActivity(web);
             }));
-            info.addView(text("官网未公开可供原生播放器使用的媒体地址；可播放范围及登录由官网决定。", 14, MUTED, false));
+            info.addView(text("官网返回加密 DASH；原生播放器尚缺获授权的解码组件。网页播放受浏览器兼容性限制。", 14, MUTED, false));
         }
         int saved = CatalogStore.prefs(this).getInt("last_" + drama.id, 0);
         if (saved < 0 || saved >= drama.episodes.size()) saved = 0;
@@ -514,7 +514,7 @@ public final class MainActivity extends Activity {
     }
 
     private void search(LinearLayout col) {
-        heading(col, "搜索短剧", "使用电视遥控器输入关键词；公开网站搜索能力以平台开放为准");
+        heading(col, "搜索短剧", "输入关键词获取官网实时剧目建议；完整搜索结果需平台验证");
         EditText input = new EditText(this);
         input.setSingleLine(true);
         input.setTextColor(WHITE);
@@ -550,7 +550,7 @@ public final class MainActivity extends Activity {
                     runOnUiThread(() -> {
                         if (version != requestVersion || !container.isAttachedToWindow()) return;
                         container.removeAllViews();
-                        if (found.isEmpty()) sectionTitle(container, "未找到结果"); else addRow(container, "搜索结果", found);
+                        if (found.isEmpty()) sectionTitle(container, "未找到结果"); else addRow(container, "官网关键词建议（非完整搜索）", found);
                     });
                 } catch (Exception e) { runOnUiThread(() -> {
                     if (version != requestVersion || !container.isAttachedToWindow()) return;
@@ -613,6 +613,7 @@ public final class MainActivity extends Activity {
         resetP.topMargin = dp(11);
         col.addView(reset, resetP);
         sectionTitle(col, "账号授权状态");
+        col.addView(button("打开官网账号登录与验证", () -> startActivity(new Intent(this, HongguoOfficialActivity.class))));
         col.addView(text(service.status() + "。收藏与原生播放器进度保存在当前电视；官网网页进度由网站管理。", 16, MUTED, false));
         sectionTitle(col, "使用说明");
         TextView instructions = text("● 支持 HTTPS MP4 / HLS(m3u8)，选集与自动连播。\n\n"

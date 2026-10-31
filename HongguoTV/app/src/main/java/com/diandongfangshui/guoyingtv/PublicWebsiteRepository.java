@@ -104,14 +104,41 @@ public final class PublicWebsiteRepository implements ContentServices.CatalogRep
         return names;
     }
     public List<Drama> search(String keyword,int page) throws Exception {
-        throw new IOException("官网全站搜索接口尚未验证；可在已加载的官网剧目中筛选标题，或打开官方网页搜索");
+        if(page>1)return Collections.emptyList();
+        if(keyword==null || keyword.trim().isEmpty())return Collections.emptyList();
+        HttpURLConnection c=(HttpURLConnection)new URL(ORIGIN+"/api/search/suggestion?query="+URLEncoder.encode(keyword.trim(),"UTF-8")).openConnection();
+        c.setConnectTimeout(15000);c.setReadTimeout(20000);c.setInstanceFollowRedirects(false);
+        try {
+            int status=c.getResponseCode();
+            if(status!=200)throw new IOException("官网关键词建议 HTTP "+status+"；完整搜索可能需要官方验证");
+            ByteArrayOutputStream out=new ByteArrayOutputStream();
+            try(InputStream in=c.getInputStream()) {
+                byte[] b=new byte[8192];int n;
+                while((n=in.read(b))!=-1) {if(out.size()+n>2*1024*1024)throw new IOException("建议响应过大");out.write(b,0,n);}
+            }
+            return parseSuggestions(out.toString("UTF-8"));
+        } finally {c.disconnect();}
+    }
+    /** Keyword suggestions with actual series metadata; not the gated full search result endpoint. */
+    public static List<Drama> parseSuggestions(String json) throws Exception {
+        JSONArray rows=new JSONObject(json).getJSONArray("suggestionList");
+        LinkedHashMap<String,Drama> result=new LinkedHashMap<>();
+        for(int i=0;i<rows.length();i++) {
+            JSONObject data=rows.getJSONObject(i).optJSONObject("video_data");
+            if(data==null||!data.has("series_id")||!data.has("series_title"))continue;
+            JSONObject card=new JSONObject(data.toString());
+            // Suggestions only contain accessible preview IDs; detail must load the full vid_list.
+            card.put("vid_list",new JSONArray());
+            Drama d=adapt(card);result.put(d.id,d);
+        }
+        return new ArrayList<>(result.values());
     }
     public Drama detail(String id) throws Exception {
         if(!id.matches("[0-9]+"))throw new IllegalArgumentException("剧集ID无效");
         return adapt(request("/detail?series_id="+id).getJSONObject("seriesDetail"));
     }
     public ContentServices.Playback resolve(String id,int episode,boolean refresh) throws Exception {
-        throw new IOException("官方播放器标记 protectedPlayback=true，公开SSR未提供媒体地址；需官方网页播放或正式授权SDK");
+        throw new IOException("protectedPlayback：实际播放接口返回加密 DASH，需获授权的专用解码组件，通用Media3尚不能播放");
     }
     public String status(){return "官网公开访客；官方 App 账号授权尚未接入";}
     public boolean canSynchronize(){return false;}

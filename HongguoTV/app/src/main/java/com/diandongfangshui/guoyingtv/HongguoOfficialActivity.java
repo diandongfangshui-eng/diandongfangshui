@@ -113,6 +113,14 @@ public final class HongguoOfficialActivity extends Activity {
         addAction(toolbar, "真人剧", () -> loadOfficial(DRAMA));
         addAction(toolbar, "后退", () -> { if (browser.canGoBack()) browser.goBack(); });
         addAction(toolbar, "刷新", () -> browser.reload());
+        addAction(toolbar, "系统浏览器", () -> {
+            Uri target = Uri.parse(browser.getUrl() == null ? HOME : browser.getUrl());
+            if (!isOfficialPage(target)) return;
+            try { startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW, target)); }
+            catch (android.content.ActivityNotFoundException e) {
+                Toast.makeText(this, "未安装支持官网的浏览器；当前WebView可能不支持加密视频", Toast.LENGTH_LONG).show();
+            }
+        });
         addAction(toolbar, "放大", () -> browser.zoomIn());
         addAction(toolbar, "缩小", () -> browser.zoomOut());
 
@@ -160,7 +168,7 @@ public final class HongguoOfficialActivity extends Activity {
                 return true;
             }
             @Override public void onPageFinished(WebView view, String url) {
-                status.setText("红果真实官网 · 内容播放范围由官网决定 · 遥控器方向键移动焦点");
+                status.setText("官网账号/播放页 · WebView可能不支持加密DASH，可尝试系统浏览器");
             }
             @Override public void onReceivedError(WebView view, WebResourceRequest req,
                                                   WebResourceError err) {

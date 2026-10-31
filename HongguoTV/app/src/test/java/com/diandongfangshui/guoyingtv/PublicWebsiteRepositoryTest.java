@@ -34,4 +34,14 @@ public class PublicWebsiteRepositoryTest {
  @Test public void protectedPlaybackIsExplicit() throws Exception {
   try{new PublicWebsiteRepository().resolve("7690961604636052505",0,true);fail();}catch(IOException expected){assertTrue(expected.getMessage().contains("protectedPlayback"));}
  }
+ @Test public void actualSuggestionsOnlyReturnSeriesAndRequireFullDetail() throws Exception {
+  String json;
+  try(InputStream in=getClass().getResourceAsStream("/public-search-suggestion.json")) {
+   ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] b=new byte[8192];int n;
+   while((n=in.read(b))!=-1)out.write(b,0,n);json=out.toString("UTF-8");
+  }
+  java.util.List<Drama> rows=PublicWebsiteRepository.parseSuggestions(json);
+  assertEquals(2,rows.size());assertEquals("7692785609428978750",rows.get(1).id);
+  assertEquals(1,rows.get(1).episodes.size());assertTrue(rows.get(1).episodes.get(0).videoId.startsWith("detail-required:"));
+ }
 }

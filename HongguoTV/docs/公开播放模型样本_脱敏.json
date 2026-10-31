@@ -1,0 +1,39 @@
+{
+  "play_info": {
+    "vid": "v02ebeg10000datsku7og65tsj5oop8g",
+    "kid": "[REDACTED temporary playback material]",
+    "audio": {
+      "main_url": "[REDACTED temporary playback material]",
+      "backup_url": "[REDACTED temporary playback material]",
+      "player_access_key": "[REDACTED temporary playback material]",
+      "codec_type": "h264",
+      "format": "dash",
+      "duration": 108.331,
+      "size": "1833171",
+      "bitrate": "135926",
+      "init_range": "0-1026",
+      "index_range": "1027-1322",
+      "kid": "[REDACTED temporary playback material]",
+      "expires_at": "1793457924"
+    },
+    "main_url": "[REDACTED temporary playback material]",
+    "backup_url": "[REDACTED temporary playback material]",
+    "player_access_key": "[REDACTED temporary playback material]",
+    "definition": "720p",
+    "format": "dash",
+    "codec_type": "h264",
+    "width": "720",
+    "height": "1280",
+    "duration": 108.331,
+    "size": "12782348",
+    "bitrate": "951135",
+    "init_range": "0-1276",
+    "index_range": "1277-1572",
+    "first_moof_range": "1573-5850",
+    "expires_at": "1793457924"
+  },
+  "base_resp": {
+    "StatusCode": 0,
+    "StatusMessage": ""
+  }
+}

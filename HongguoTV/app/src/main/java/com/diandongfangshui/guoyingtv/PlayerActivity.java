@@ -6,6 +6,8 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
@@ -27,6 +29,14 @@ import java.util.List;
 public final class PlayerActivity extends Activity {
     private ExoPlayer player;
     private PlayerView video;
+    private LinearLayout controlsOverlay;
+    private final Handler controlsHandler = new Handler(Looper.getMainLooper());
+    private final Runnable hideControls = () -> {
+        if (controlsOverlay != null && player != null
+                && player.getPlaybackState() == Player.STATE_READY) {
+            controlsOverlay.setVisibility(View.GONE);
+        }
+    };
     private TextView episodeTitle;
     private TextView playbackHint;
     private Drama drama;
@@ -84,7 +94,8 @@ public final class PlayerActivity extends Activity {
         screen.addView(video, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        LinearLayout overlay = new LinearLayout(this);
+        controlsOverlay = new LinearLayout(this);
+        LinearLayout overlay = controlsOverlay;
         overlay.setOrientation(LinearLayout.VERTICAL);
         overlay.setPadding(dp(22), dp(10), dp(22), dp(15));
         GradientDrawable surface = new GradientDrawable();
@@ -105,6 +116,7 @@ public final class PlayerActivity extends Activity {
         screen.addView(overlay, overlayParams);
         player.addListener(new Player.Listener() {
             @Override public void onPlaybackStateChanged(int state) {
+                if (state == Player.STATE_READY || state == Player.STATE_BUFFERING) revealControls();
                 if (state == Player.STATE_ENDED && !switching) {
                     clearCompletedPosition();
                     if (currentEpisode + 1 < drama.episodes.size()) {
@@ -116,11 +128,20 @@ public final class PlayerActivity extends Activity {
             }
 
             @Override public void onPlayerError(PlaybackException error) {
+                controlsHandler.removeCallbacks(hideControls);
+                if (controlsOverlay != null) controlsOverlay.setVisibility(View.VISIBLE);
                 playbackHint.setText("播放失败：" + error.getErrorCodeName()
                         + "。请检查片源是否可公开访问、支持当前设备解码。返回键退出");
             }
         });
         video.requestFocus();
+    }
+
+    private void revealControls() {
+        if (controlsOverlay == null) return;
+        controlsOverlay.setVisibility(View.VISIBLE);
+        controlsHandler.removeCallbacks(hideControls);
+        controlsHandler.postDelayed(hideControls, 6500);
     }
 
     private String progressKey(int episode) {
@@ -160,6 +181,7 @@ public final class PlayerActivity extends Activity {
                 .putInt("last_" + drama.id, episode).apply();
         Drama.Episode data = drama.episodes.get(episode);
         episodeTitle.setText(drama.title + "  ·  " + data.title);
+        revealControls();
         playbackHint.setText("← / → 快退快进 10 秒     ↑ / ↓ 上下集     确定键 暂停 / 继续     菜单键 倍速     返回键 退出");
         player.setMediaItem(MediaItem.fromUri(data.url));
         player.prepare();
@@ -195,6 +217,7 @@ public final class PlayerActivity extends Activity {
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
         if (event.getAction() != KeyEvent.ACTION_DOWN || player == null)
             return super.dispatchKeyEvent(event);
+        revealControls();
         switch (event.getKeyCode()) {
             case KeyEvent.KEYCODE_DPAD_LEFT:
             case KeyEvent.KEYCODE_MEDIA_REWIND:
@@ -237,6 +260,7 @@ public final class PlayerActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        controlsHandler.removeCallbacks(hideControls);
         if (player != null) {
             savePosition();
             player.release();

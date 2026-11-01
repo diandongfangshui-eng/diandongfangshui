@@ -50,6 +50,11 @@ public final class MainActivity extends Activity {
     private Drama selected = null;
     private boolean isDemo = true;
     private boolean loaded = false;
+    private View preferredCard;
+    private View sidebarTarget;
+    private String lastFocusedDramaId = "";
+    private boolean restoreCardFocus = false;
+    private boolean restoreSidebarFocus = false;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -62,7 +67,10 @@ public final class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
-        if (loaded && stage != null) renderPage();
+        if (loaded && stage != null) {
+            restoreCardFocus = selected != null || !lastFocusedDramaId.isEmpty();
+            renderPage();
+        }
     }
 
     private int dp(float value) {
@@ -99,13 +107,15 @@ public final class MainActivity extends Activity {
         view.setClickable(true);
         view.setGravity(Gravity.CENTER);
         view.setPadding(dp(18), dp(10), dp(18), dp(10));
+        view.setContentDescription(content);
         view.setBackground(shape(PANEL, 12, PANEL, 1));
         view.setOnFocusChangeListener((v, focus) -> {
             view.setBackground(focus
                     ? shape(Color.rgb(54, 38, 42), 12, ACCENT, 2)
                     : shape(PANEL, 12, PANEL, 1));
-            view.setScaleX(focus ? 1.04f : 1f);
-            view.setScaleY(focus ? 1.04f : 1f);
+            view.setScaleX(focus ? 1.045f : 1f);
+            view.setScaleY(focus ? 1.045f : 1f);
+            view.setElevation(dp(focus ? 10 : 0));
         });
         view.setOnClickListener(v -> action.run());
         return view;
@@ -116,11 +126,15 @@ public final class MainActivity extends Activity {
         shell.setOrientation(LinearLayout.HORIZONTAL);
         shell.setBackgroundColor(BG);
         setContentView(shell);
-        sidebar = vertical();
-        sidebar.setBackgroundColor(Color.rgb(20, 25, 35));
-        sidebar.setPadding(dp(22), dp(24), dp(18), dp(20));
-        shell.addView(sidebar, new LinearLayout.LayoutParams(dp(202),
+        ScrollView navScroll = new ScrollView(this);
+        navScroll.setFillViewport(true);
+        navScroll.setVerticalScrollBarEnabled(false);
+        navScroll.setBackgroundColor(Color.rgb(20, 25, 35));
+        shell.addView(navScroll, new LinearLayout.LayoutParams(dp(216),
                 ViewGroup.LayoutParams.MATCH_PARENT));
+        sidebar = vertical();
+        sidebar.setPadding(dp(16), dp(23), dp(14), dp(23));
+        navScroll.addView(sidebar);
         stage = new FrameLayout(this);
         shell.addView(stage, new LinearLayout.LayoutParams(0,
                 ViewGroup.LayoutParams.MATCH_PARENT, 1f));
@@ -129,7 +143,7 @@ public final class MainActivity extends Activity {
     private void buildSidebar() {
         sidebar.removeAllViews();
         TextView logo = text("●  果影 TV", 27, WHITE, true);
-        logo.setPadding(0, 0, 0, dp(32));
+        logo.setPadding(dp(7), 0, 0, dp(19));
         sidebar.addView(logo);
         String[] tabs = {"精选", "红果官网片库", "局域网片库", "分类", "搜索", "追剧收藏", "最近观看", "设置"};
         for (String tab : tabs) {
@@ -144,18 +158,22 @@ public final class MainActivity extends Activity {
                 }
                 selected = null;
                 currentTab = tab;
+                restoreCardFocus = false;
+                restoreSidebarFocus = true;
                 renderPage();
             });
             if (currentTab.equals(tab) && selected == null) {
                 nav.setTextColor(ACCENT);
+                sidebarTarget = nav;
             }
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(56));
-            lp.bottomMargin = dp(11);
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(49));
+            lp.bottomMargin = dp(8);
             sidebar.addView(nav, lp);
         }
-        View spacer = new View(this);
-        sidebar.addView(spacer, new LinearLayout.LayoutParams(1, 0, 1));
+        TextView hint = text("遥控器操作\n↑↓ 选择   OK 确认\n菜单键 返回导航", 12, MUTED, false);
+        hint.setPadding(dp(7), dp(18), 0, dp(6));
+        sidebar.addView(hint);
         TextView legal = text("非官方独立客户端\n仅支持授权片单", 11, MUTED, false);
         legal.setLineSpacing(dp(5), 1f);
         sidebar.addView(legal);
@@ -172,11 +190,14 @@ public final class MainActivity extends Activity {
             isDemo = result.demo;
             loaded = true;
             selected = null;
+            restoreCardFocus = true;
             renderPage();
         });
     }
 
     private LinearLayout page() {
+        sidebarTarget = null;
+        preferredCard = null;
         buildSidebar();
         stage.removeAllViews();
         ScrollView scroll = new ScrollView(this);
@@ -184,7 +205,7 @@ public final class MainActivity extends Activity {
         scroll.setVerticalScrollBarEnabled(false);
         stage.addView(scroll);
         LinearLayout content = vertical();
-        content.setPadding(dp(38), dp(24), dp(42), dp(35));
+        content.setPadding(dp(34), dp(22), dp(42), dp(35));
         scroll.addView(content);
         return content;
     }
@@ -200,7 +221,7 @@ public final class MainActivity extends Activity {
     }
 
     private void sectionTitle(LinearLayout col, String title) {
-        TextView t = text(title, 23, WHITE, true);
+        TextView t = text(title, 22, WHITE, true);
         t.setPadding(0, dp(21), 0, dp(12));
         col.addView(t);
     }
@@ -232,10 +253,17 @@ public final class MainActivity extends Activity {
                 home(col);
                 break;
         }
+        if (restoreSidebarFocus && sidebarTarget != null) {
+            sidebarTarget.requestFocus();
+        } else if (restoreCardFocus && preferredCard != null) {
+            preferredCard.requestFocus();
+        }
+        restoreCardFocus = false;
+        restoreSidebarFocus = false;
     }
 
     private void home(LinearLayout col) {
-        heading(col, "今天看点什么？", status);
+        heading(col, "今晚想看什么？", "电视大屏精选  ·  " + status);
         if (isDemo) {
             TextView warning = text("演示模式：这里是公开测试影片，并非红果正版剧库。在「设置」导入有权限的片单后即可替换。", 14, Color.rgb(255, 202, 139), false);
             warning.setPadding(dp(18), dp(12), dp(18), dp(12));
@@ -247,6 +275,7 @@ public final class MainActivity extends Activity {
             col.addView(button("打开设置并导入片单", () -> { currentTab = "设置"; renderPage(); }));
             return;
         }
+        featuredHero(col, catalog.get(0));
         List<Drama> recent = fromIds(getRecentIds());
         if (!recent.isEmpty()) addRow(col, "继续观看", recent);
         addRow(col, "为你精选", catalog);
@@ -257,6 +286,69 @@ public final class MainActivity extends Activity {
         for (Map.Entry<String, List<Drama>> entry : groups.entrySet()) {
             addRow(col, entry.getKey(), entry.getValue());
         }
+    }
+
+    /** Large, remote-first featured banner. Does not imply access to the official catalog. */
+    private void featuredHero(LinearLayout col, Drama drama) {
+        LinearLayout hero = new LinearLayout(this);
+        hero.setOrientation(LinearLayout.HORIZONTAL);
+        hero.setGravity(Gravity.CENTER_VERTICAL);
+        hero.setPadding(dp(23), dp(17), dp(23), dp(17));
+        GradientDrawable bg = new GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                new int[] {0xff4c2936, 0xff26283b, 0xff171e2b});
+        bg.setCornerRadius(dp(22));
+        hero.setBackground(bg);
+        LinearLayout.LayoutParams banner = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(253));
+        banner.bottomMargin = dp(5);
+        col.addView(hero, banner);
+        ImageView poster = new ImageView(this);
+        poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        poster.setBackground(shape(0xff343b4a, 12, 0xff343b4a, 0));
+        hero.addView(poster, new LinearLayout.LayoutParams(dp(151), dp(216)));
+        loadImage(poster, drama.poster);
+
+        LinearLayout details = vertical();
+        details.setPadding(dp(25), 0, 0, 0);
+        hero.addView(details, new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView tag = text("✦  今 日 精 选", 14, 0xffffc2b8, true);
+        details.addView(tag);
+        TextView headline = text(drama.title, 30, WHITE, true);
+        headline.setMaxLines(2);
+        headline.setPadding(0, dp(8), 0, dp(5));
+        details.addView(headline);
+        TextView meta = text(drama.genre + "  ·  " + drama.episodes.size() + " 集", 15,
+                0xffd5dbea, false);
+        details.addView(meta);
+        TextView synopsis = text(drama.description.isEmpty()
+                ? "打开详情，浏览分集与剧情介绍。"
+                : drama.description, 15, 0xffe0e4ec, false);
+        synopsis.setMaxLines(2);
+        synopsis.setPadding(0, dp(10), 0, dp(12));
+        details.addView(synopsis);
+
+        LinearLayout actions = new LinearLayout(this);
+        details.addView(actions);
+        int resume = CatalogStore.prefs(this).getInt("last_" + drama.id, 0);
+        int playable = drama.firstPlayableEpisode(resume);
+        TextView play = button(playable >= 0 ? "▶  立即播放" : "查看分集", () -> {
+            if (playable >= 0) openPlayer(drama, playable);
+            else { selected = drama; restoreCardFocus = true; renderPage(); }
+        });
+        actions.addView(play, new LinearLayout.LayoutParams(dp(166), dp(51)));
+        TextView info = button("剧情详情  ›", () -> {
+            selected = drama;
+            lastFocusedDramaId = drama.id;
+            restoreCardFocus = true;
+            renderPage();
+        });
+        LinearLayout.LayoutParams more = new LinearLayout.LayoutParams(dp(158), dp(51));
+        more.leftMargin = dp(14);
+        actions.addView(info, more);
+        if (lastFocusedDramaId.isEmpty() || drama.id.equals(lastFocusedDramaId))
+            preferredCard = play;
     }
 
     private void categories(LinearLayout col) {
@@ -310,41 +402,51 @@ public final class MainActivity extends Activity {
         hsv.setHorizontalScrollBarEnabled(false);
         LinearLayout strip = new LinearLayout(this);
         strip.setOrientation(LinearLayout.HORIZONTAL);
-        strip.setPadding(dp(5), dp(4), dp(12), dp(10));
+        strip.setPadding(dp(6), dp(9), dp(16), dp(17));
         hsv.addView(strip);
         for (Drama drama : dramas) {
             LinearLayout card = vertical();
             card.setFocusable(true);
             card.setClickable(true);
-            card.setPadding(dp(8), dp(8), dp(8), dp(10));
+            card.setPadding(dp(9), dp(9), dp(9), dp(12));
             card.setBackground(shape(PANEL, 13, PANEL, 1));
-            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(dp(190), dp(253));
-            p.rightMargin = dp(16);
+            LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(dp(203), dp(303));
+            p.rightMargin = dp(17);
             strip.addView(card, p);
             ImageView poster = new ImageView(this);
             poster.setScaleType(ImageView.ScaleType.CENTER_CROP);
             poster.setBackground(shape(Color.rgb(49, 55, 71), 8, PANEL, 0));
             card.addView(poster, new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(170)));
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(215)));
             loadImage(poster, drama.poster);
-            TextView label = text(drama.title, 15, WHITE, true);
+            TextView label = text(drama.title, 17, WHITE, true);
             label.setMaxLines(2);
             label.setPadding(0, dp(9), 0, 0);
             card.addView(label);
-            TextView note = text(drama.episodes.size() + " 集  ·  " + drama.genre, 11, MUTED, false);
+            TextView note = text(drama.episodes.size() + " 集  ·  " + drama.genre, 12, MUTED, false);
             note.setPadding(0, dp(5), 0, 0);
             card.addView(note);
             card.setOnFocusChangeListener((view, focus) -> {
                 card.setBackground(focus
                         ? shape(Color.rgb(48, 38, 45), 13, ACCENT, 2)
                         : shape(PANEL, 13, PANEL, 1));
-                card.setScaleX(focus ? 1.035f : 1f);
-                card.setScaleY(focus ? 1.035f : 1f);
+                card.setScaleX(focus ? 1.055f : 1f);
+                card.setScaleY(focus ? 1.055f : 1f);
+                card.setElevation(dp(focus ? 14 : 0));
+                if (focus) lastFocusedDramaId = drama.id;
             });
-            card.setOnClickListener(v -> { selected = drama; renderPage(); });
+            if (preferredCard == null || drama.id.equals(lastFocusedDramaId))
+                preferredCard = card;
+            card.setContentDescription(drama.title + "，" + drama.episodes.size() + " 集，确定键查看详情");
+            card.setOnClickListener(v -> {
+                lastFocusedDramaId = drama.id;
+                selected = drama;
+                restoreCardFocus = true;
+                renderPage();
+            });
         }
         col.addView(hsv, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(278)));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(334)));
     }
 
     private void loadImage(ImageView view, String link) {
@@ -446,7 +548,8 @@ public final class MainActivity extends Activity {
             currentRow.addView(item, ep);
         }
         col.addView(episodes);
-        play.requestFocus();
+        if (restoreCardFocus || !play.hasFocus()) play.requestFocus();
+        restoreCardFocus = false;
     }
 
     private void search(LinearLayout col) {
@@ -564,6 +667,22 @@ public final class MainActivity extends Activity {
     }
 
     @Override public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_MENU) {
+            if (selected != null) {
+                selected = null;
+                restoreSidebarFocus = true;
+                renderPage();
+            } else if (sidebarTarget != null) {
+                sidebarTarget.requestFocus();
+            }
+            return true;
+        }
+        if (keyCode == KeyEvent.KEYCODE_SEARCH && selected == null) {
+            currentTab = "搜索";
+            restoreSidebarFocus = true;
+            renderPage();
+            return true;
+        }
         return super.onKeyDown(keyCode, event);
     }
 }

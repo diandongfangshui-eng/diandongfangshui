@@ -3,6 +3,8 @@ package com.diandongfangshui.guoyingtv;
 import android.app.Activity;
 import android.content.Intent;
 import android.graphics.Color;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
@@ -14,10 +16,14 @@ import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
 import android.widget.EditText;
 import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -28,6 +34,8 @@ public final class BridgeActivity extends Activity {
     private static final int BG = 0xff111621, PANEL = 0xff242c3b, FOCUS = 0xfff05c50;
     private static final int TEXT = Color.WHITE, SECONDARY = 0xffa8b4c6;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    private static final ExecutorService POSTERS = Executors.newFixedThreadPool(3);
+    private String lastSeriesId = "";
     private LinearLayout root, body, listView;
     private EditText baseInput, tokenInput, searchInput;
     private TextView stateText;
@@ -88,8 +96,9 @@ public final class BridgeActivity extends Activity {
         view.setClickable(true);
         view.setOnFocusChangeListener((v, focused) -> {
             view.setBackground(shape(PANEL, focused));
-            view.setScaleX(focused ? 1.035f : 1f);
-            view.setScaleY(focused ? 1.035f : 1f);
+            view.setScaleX(focused ? 1.05f : 1f);
+            view.setScaleY(focused ? 1.05f : 1f);
+            view.setElevation(dp(focused ? 10 : 0));
         });
         view.setOnClickListener(v -> task.run());
         return view;
@@ -110,10 +119,10 @@ public final class BridgeActivity extends Activity {
         body.addView(header);
         TextView back = button("‹ 返回果影 TV", () -> finish());
         header.addView(back, new LinearLayout.LayoutParams(dp(188), dp(52)));
-        TextView title = text("  局域网内容服务", 28, TEXT);
+        TextView title = text("  短剧片库 · 大屏模式", 28, TEXT);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         header.addView(title);
-        TextView subtitle = text("连接你自己管理的内容桥接服务 · 不使用红果官方账号或密码", 14, SECONDARY);
+        TextView subtitle = text("遥控器方向键浏览海报 · 确定查看分集 · 菜单键回到搜索 · 使用自己管理的内容服务", 14, SECONDARY);
         subtitle.setPadding(0, dp(16), 0, dp(10));
         body.addView(subtitle);
 
@@ -256,6 +265,7 @@ public final class BridgeActivity extends Activity {
 
     private void renderList() {
         heading(searching ? "搜索：" + keyword : "短剧精选");
+        View focusCard = null;
         if (currentList.isEmpty()) {
             listView.addView(text("没有剧目，或者服务未获取到可用内容。", 16, SECONDARY));
         } else {
@@ -264,18 +274,48 @@ public final class BridgeActivity extends Activity {
                 if (i % 4 == 0) {
                     row = new LinearLayout(this);
                     LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT, dp(118));
-                    rowParams.bottomMargin = dp(12);
+                            ViewGroup.LayoutParams.MATCH_PARENT, dp(280));
+                    rowParams.bottomMargin = dp(20);
                     listView.addView(row, rowParams);
                 }
                 BridgeApi.Series series = currentList.get(i);
-                TextView card = button(series.title + (series.badge.isEmpty() ? "" : "\n" + series.badge),
-                        () -> loadDetail(series.id));
-                card.setGravity(Gravity.CENTER_VERTICAL | Gravity.LEFT);
-                card.setMaxLines(3);
-                LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, dp(110), 1f);
-                cp.rightMargin = dp(11);
+                LinearLayout card = column();
+                card.setFocusable(true);
+                card.setClickable(true);
+                card.setPadding(dp(9), dp(9), dp(9), dp(9));
+                card.setBackground(shape(PANEL, false));
+                card.setContentDescription(series.title + "，确定键查看分集");
+                ImageView image = new ImageView(this);
+                image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                image.setBackground(shape(0xff3b4455, false));
+                card.addView(image, new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, dp(187)));
+                fetchPoster(image, series.cover);
+                TextView name = text(series.title, 17, TEXT);
+                name.setMaxLines(2);
+                name.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+                name.setPadding(0, dp(10), 0, dp(4));
+                card.addView(name);
+                if (!series.badge.isEmpty()) {
+                    TextView tag = text(series.badge, 12, 0xffffbcaa);
+                    tag.setMaxLines(1);
+                    card.addView(tag);
+                }
+                card.setOnFocusChangeListener((v, focused) -> {
+                    card.setBackground(shape(PANEL, focused));
+                    card.setScaleX(focused ? 1.045f : 1f);
+                    card.setScaleY(focused ? 1.045f : 1f);
+                    card.setElevation(dp(focused ? 12 : 0));
+                    if (focused) lastSeriesId = series.id;
+                });
+                card.setOnClickListener(v -> {
+                    lastSeriesId = series.id;
+                    loadDetail(series.id);
+                });
+                LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(0, dp(274), 1f);
+                cp.rightMargin = dp(13);
                 row.addView(card, cp);
+                if (focusCard == null || series.id.equals(lastSeriesId)) focusCard = card;
             }
         }
         LinearLayout pager = new LinearLayout(this);
@@ -286,6 +326,33 @@ public final class BridgeActivity extends Activity {
         pager.addView(button("上一页", () -> loadList(searching, Math.max(1, page - 1))));
         pager.addView(space(12));
         pager.addView(button("下一页", () -> loadList(searching, Math.min(200, page + 1))));
+        if (focusCard != null) focusCard.requestFocus();
+    }
+
+    private void fetchPoster(ImageView target, String uri) {
+        if (!UrlPolicy.isHttpsUrl(uri)) return;
+        POSTERS.execute(() -> {
+            HttpURLConnection c = null;
+            try {
+                c = (HttpURLConnection) new URL(uri).openConnection();
+                c.setConnectTimeout(5000);
+                c.setReadTimeout(8000);
+                c.setInstanceFollowRedirects(false);
+                if (c.getResponseCode() != 200 || c.getContentLength() > 3_000_000) return;
+                try (InputStream in = c.getInputStream()) {
+                    BitmapFactory.Options opts = new BitmapFactory.Options();
+                    opts.inSampleSize = 2;
+                    Bitmap image = BitmapFactory.decodeStream(in, null, opts);
+                    if (image != null) runOnUiThread(() -> {
+                        if (!isFinishing() && target.isAttachedToWindow()) target.setImageBitmap(image);
+                    });
+                }
+            } catch (Exception ignored) {
+                // Poster failures retain the placeholder.
+            } finally {
+                if (c != null) c.disconnect();
+            }
+        });
     }
 
     private void loadDetail(String id) {
@@ -324,6 +391,7 @@ public final class BridgeActivity extends Activity {
             return;
         }
         LinearLayout line = null;
+        View firstEpisode = null;
         for (int i = 0; i < series.episodes.size(); i++) {
             if (i % 6 == 0) {
                 line = new LinearLayout(this);
@@ -338,7 +406,9 @@ public final class BridgeActivity extends Activity {
             LinearLayout.LayoutParams epParams = new LinearLayout.LayoutParams(dp(94), dp(52));
             epParams.rightMargin = dp(12);
             line.addView(b, epParams);
+            if (firstEpisode == null) firstEpisode = b;
         }
+        if (firstEpisode != null) firstEpisode.requestFocus();
     }
 
     private void play(BridgeApi.Series series, int episodeIndex) {
@@ -355,6 +425,20 @@ public final class BridgeActivity extends Activity {
         intent.putExtra("episode_titles", titles);
         intent.putExtra("episode", episodeIndex);
         startActivity(intent);
+    }
+
+    @Override public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_MENU) {
+            if (detail != null) {
+                detail = null;
+                ++generation;
+                renderList();
+            } else if (searchInput != null) {
+                searchInput.requestFocus();
+            }
+            return true;
+        }
+        return super.onKeyDown(keyCode, event);
     }
 
     @Override public void onBackPressed() {

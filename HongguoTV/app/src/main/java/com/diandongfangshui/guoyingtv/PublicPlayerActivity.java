@@ -36,14 +36,14 @@ public final class PublicPlayerActivity extends Activity {
     private TextView progressText;
     private boolean resumeOnReturn;
     private boolean audioClockStarted;
-    private int publicLimit;
+    private boolean sourceFailed;
     private int progressTicks;
     private final android.os.Handler timer=new android.os.Handler(android.os.Looper.getMainLooper());
-    private final Runnable update=new Runnable(){public void run(){if(player!=null){progressText.setText((player.getPlaybackState()==Player.STATE_ENDED?"已播完":player.isPlaying()?"播放中":renderedFrame?"已暂停":"正在加载")+" · "+clockTime(player.getCurrentPosition())+" / "+clockTime(player.getDuration())+" · "+speeds[speed]+"x");if(++progressTicks%5==0)savePosition();timer.postDelayed(this,1000);}}};
+    private final Runnable update=new Runnable(){public void run(){if(player!=null){progressText.setText((sourceFailed?"未能播放":player.getPlaybackState()==Player.STATE_ENDED?"已播完":player.isPlaying()?"播放中":renderedFrame?"已暂停":"正在加载")+" · "+clockTime(player.getCurrentPosition())+" / "+clockTime(player.getDuration())+" · "+speeds[speed]+"x");if(++progressTicks%5==0)savePosition();timer.postDelayed(this,1000);}}};
     private TextView titleText, helpText;
     private String seriesId, seriesTitle;
     private String[] ids, titles;
-    private int current, requestId = 0;
+    private int current, requestedEpisode, requestId = 0;
     private boolean retryUsed = false;
     private boolean switching = false;
     private final float[] speeds = {1f, 1.25f, 1.5f, 2f};
@@ -65,7 +65,6 @@ public final class PublicPlayerActivity extends Activity {
             finish();
             return;
         }
-        publicLimit=getIntent().getIntExtra("public_episode_count",0);
         current = Math.max(0, Math.min(ids.length - 1, getIntent().getIntExtra("episode", 0)));
         try {
             api = WebsiteSession.repository(this);
@@ -130,13 +129,14 @@ public final class PublicPlayerActivity extends Activity {
                     int completed = current;
                     CatalogStore.prefs(PublicPlayerActivity.this).edit()
                             .remove(positionKey(completed)).apply();
-                    if (current + 1 < Math.min(ids.length,publicLimit)) playEpisode(current + 1);
-                    else helpText.setText("官网公开分集已播完，共 "+publicLimit+" 集；其他分集需对应授权");
+                    if (current + 1 < ids.length) playEpisode(current + 1);
+                    else helpText.setText("本剧已播完 · 按返回键退出");
                 }
             }
 
             @Override public void onRenderedFirstFrame(){renderedFrame=true;recordRecent();}
             @Override public void onPlayerError(PlaybackException error) {
+                if(switching)return;
                 int status=0;
                 for(Throwable cause=error;cause!=null;cause=cause.getCause())if(cause instanceof androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)status=((androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)cause).responseCode;
                 if (!retryUsed && PlaybackPolicy.retry(0,status)) {
@@ -167,16 +167,12 @@ public final class PublicPlayerActivity extends Activity {
 
     private void playEpisode(int index) {
         if (index < 0 || index >= ids.length || player == null) return;
-        if(index>=publicLimit){
-            String message="本集不在当前官网声明的公开范围内";
-            if(player.getMediaItemCount()==0){titleText.setText(seriesTitle+" · "+titles[index]);helpText.setText(message);}
-            Toast.makeText(this,message,Toast.LENGTH_LONG).show();return;
-        }
         switching = true;
         if (player.getMediaItemCount() != 0 && player.getPlaybackState() != Player.STATE_ENDED) {
             savePosition();
         }
-        player.pause();
+        player.stop();player.clearMediaItems();
+        requestedEpisode=index;
         renderedFrame=false;audioClockStarted=false;
         retryUsed = false;
 
@@ -187,6 +183,8 @@ public final class PublicPlayerActivity extends Activity {
     }
 
     private void resolveAndStart(int episodeIndex, boolean fresh, long position) {
+        switching = true;
+        sourceFailed = false;
         int generation = ++requestId;
         worker.execute(() -> {
             try {
@@ -201,7 +199,7 @@ public final class PublicPlayerActivity extends Activity {
                                 .setAllowCrossProtocolRedirects(false);
                         ProgressiveMediaSource media = new ProgressiveMediaSource.Factory(http)
                                 .createMediaSource(MediaItem.fromUri(path));
-                        current=episodeIndex;publicLimit=resolved.publicEpisodeCount;
+                        current=episodeIndex;
                         CatalogStore.prefs(this).edit().putInt("last_"+seriesId,current).apply();
                         player.setMediaSource(media);
                         player.prepare();
@@ -219,15 +217,16 @@ public final class PublicPlayerActivity extends Activity {
                 runOnUiThread(() -> {
                     if (generation != requestId || isFinishing()) return;
                     switching = false;
+                    sourceFailed = true;
                     helpText.setText("媒体地址获取失败：" + e.getMessage()
-                            + " · 按菜单键重试");
+                            + " · 确定重试 · 上下切集");
                 });
             }
         });
     }
 
     private void seek(long by) {
-        if (player == null) return;
+        if (player == null || player.getMediaItemCount()==0) return;
         long target = Math.max(0, player.getCurrentPosition() + by);
         if (player.getDuration() > 0) target = Math.min(target, player.getDuration());
         player.seekTo(target);
@@ -241,6 +240,7 @@ public final class PublicPlayerActivity extends Activity {
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
             case KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                if(player.getMediaItemCount()==0){resolveAndStart(requestedEpisode,true,0);return true;}
                 if (player.isPlaying()) player.pause(); else player.play();
                 return true;
             case KeyEvent.KEYCODE_DPAD_LEFT:
@@ -254,16 +254,16 @@ public final class PublicPlayerActivity extends Activity {
             case KeyEvent.KEYCODE_DPAD_UP:
             case KeyEvent.KEYCODE_CHANNEL_UP:
             case KeyEvent.KEYCODE_MEDIA_PREVIOUS:
-                playEpisode(current - 1);
+                playEpisode(requestedEpisode - 1);
                 return true;
             case KeyEvent.KEYCODE_DPAD_DOWN:
             case KeyEvent.KEYCODE_CHANNEL_DOWN:
             case KeyEvent.KEYCODE_MEDIA_NEXT:
-                playEpisode(current + 1);
+                playEpisode(requestedEpisode + 1);
                 return true;
             case KeyEvent.KEYCODE_MENU:
                 if(event.getRepeatCount()==0){speed=(speed+1)%speeds.length;player.setPlaybackSpeed(speeds[speed]);helpText.setText("倍速 "+speeds[speed]+"x");}
-                else if(event.getRepeatCount()==1){retryUsed=true;resolveAndStart(current,true,Math.max(0,player.getCurrentPosition()));}
+                else if(event.getRepeatCount()==1){retryUsed=true;resolveAndStart(requestedEpisode,true,player.getMediaItemCount()>0&&current==requestedEpisode?Math.max(0,player.getCurrentPosition()):0);}
                 return true;
             case KeyEvent.KEYCODE_MEDIA_PLAY:
                 player.play();

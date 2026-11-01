@@ -62,7 +62,9 @@ public final class MainActivity extends Activity {
                 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
         service = WebsiteSession.repository(this);
         buildShell();
-        loadCatalog();
+        String seriesId=getIntent().getStringExtra("open_series_id");
+        if(seriesId!=null){publicCatalog=true;isDemo=false;loaded=true;selectSeriesId(seriesId);}
+        else loadCatalog();
     }
 
     @Override protected void onResume() {
@@ -117,6 +119,9 @@ public final class MainActivity extends Activity {
     }
 
     private void buildShell() {
+        if(getIntent().hasExtra("open_series_id")){
+            stage=new FrameLayout(this);stage.setBackgroundColor(BG);setContentView(stage);return;
+        }
         LinearLayout shell = new LinearLayout(this);
         shell.setOrientation(LinearLayout.HORIZONTAL);
         shell.setBackgroundColor(BG);
@@ -136,13 +141,15 @@ public final class MainActivity extends Activity {
     }
 
     private void buildSidebar() {
+        if(sidebar==null)return;
         sidebar.removeAllViews();
         TextView logo = text("●  果影 TV", 27, WHITE, true);
         logo.setPadding(0, 0, 0, dp(32));
         sidebar.addView(logo);
-        String[] tabs = {"精选", "热播榜", "红果官网片库", "局域网片库", "分类", "搜索", "追剧收藏", "最近观看", "设置"};
+        String[] tabs = {"精选", "全部片库", "热播榜", "红果官网片库", "局域网片库", "分类", "搜索", "追剧收藏", "最近观看", "设置"};
         for (String tab : tabs) {
             TextView nav = button(tab, () -> {
+                if("全部片库".equals(tab)||("分类".equals(tab)&&publicCatalog)){startActivity(new Intent(this,BrowseActivity.class));return;}
                 if ("红果官网片库".equals(tab)) {
                     startActivity(new Intent(this, HongguoOfficialActivity.class));
                     return;
@@ -190,7 +197,7 @@ public final class MainActivity extends Activity {
                 runOnUiThread(() -> {
                     if (version != requestVersion || isFinishing() || isDestroyed()) return;
                     catalog.clear(); catalog.addAll(data); isDemo = false; loaded = true;
-                    status = "官网实时目录 · " + data.size() + " 部 · 网页开放内容由平台决定";
+                    status = "首页推荐 · " + data.size() + " 部 · 更多内容请进入全部片库";
                     selected = null; renderPage();
                 });
             } catch (Exception error) { runOnUiThread(() -> {
@@ -202,18 +209,26 @@ public final class MainActivity extends Activity {
 
     private void selectDrama(Drama drama) {
         if (!publicCatalog) { selected = drama; renderPage(); return; }
+        selectSeriesId(drama.id);
+    }
+    private void selectSeriesId(String seriesId){
         int version = ++requestVersion;
         status = "正在读取分集…";
         Toast.makeText(this, status, Toast.LENGTH_SHORT).show();
         IMAGES.execute(() -> {
             try {
-                Drama full = service.detail(drama.id);
+                Drama full = service.detail(seriesId);
                 runOnUiThread(() -> {
                     if (version != requestVersion || isFinishing() || isDestroyed()) return;
-                    selected = full; renderPage();
+                    selected = full;loaded=true;
+                    CatalogStore.prefs(this).edit().putString("series_meta_"+full.id,full.toJson().toString()).apply();
+                    renderPage();
                 });
             } catch (Exception e) { runOnUiThread(() -> {
-                if (!isFinishing() && !isDestroyed()) Toast.makeText(this, "详情读取失败：" + e.getMessage(), Toast.LENGTH_LONG).show();
+                if (!isFinishing() && !isDestroyed()) {
+                    status="详情读取失败："+e.getMessage();
+                    if(getIntent().hasExtra("open_series_id"))renderPage();else Toast.makeText(this,status,Toast.LENGTH_LONG).show();
+                }
             }); }
         });
     }
@@ -250,6 +265,10 @@ public final class MainActivity extends Activity {
     private void renderPage() {
         if (stage == null) return;
         LinearLayout col = page();
+        if(getIntent().hasExtra("open_series_id")&&selected==null){
+            heading(col,"剧集详情",status);
+            col.addView(button("重试读取详情",()->selectSeriesId(getIntent().getStringExtra("open_series_id"))));return;
+        }
         if (selected != null) {
             detail(col, selected);
             return;
@@ -278,6 +297,7 @@ public final class MainActivity extends Activity {
 
     private void home(LinearLayout col) {
         heading(col, "热播榜".equals(currentTab) ? "官网热播榜" : "今天看点什么？", status);
+        if(publicCatalog)col.addView(button("浏览全部片库 · 真人剧 / 漫剧 / AI剧 · 题材与分页",()->startActivity(new Intent(this,BrowseActivity.class))));
         if (isDemo) {
             TextView warning = text("演示模式：这里是公开测试影片，并非红果正版剧库。在「设置」导入有权限的片单后即可替换。", 14, Color.rgb(255, 202, 139), false);
             warning.setPadding(dp(18), dp(12), dp(18), dp(12));
@@ -357,10 +377,10 @@ public final class MainActivity extends Activity {
 
     private List<Drama> fromIds(Iterable<String> ids) {
         List<Drama> found = new ArrayList<>();
-        for (String id : ids) {
-            for (Drama d : catalog) {
-                if (d.id.equals(id)) { found.add(d); break; }
-            }
+        for(String id:ids){
+            Drama record=null;for(Drama d:catalog)if(d.id.equals(id)){record=d;break;}
+            if(record==null)try{record=Drama.fromJson(new org.json.JSONObject(CatalogStore.prefs(this).getString("series_meta_"+id,"")));}catch(Exception ignored){}
+            if(record!=null)found.add(record);
         }
         return found;
     }
@@ -662,6 +682,7 @@ public final class MainActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
+        if(getIntent().hasExtra("open_series_id")){finish();return;}
         if (selected != null) {
             selected = null;
             renderPage();

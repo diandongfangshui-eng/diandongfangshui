@@ -51,10 +51,14 @@ public final class PublicWebsiteRepository implements ContentServices.CatalogRep
         JSONObject root = new JSONObject(new JSONTokener(html.substring(start + marker.length())));
         JSONObject loader = root.getJSONObject("loaderData");
         Iterator<String> keys = loader.keys();
+        JSONObject fallback=null;
         while (keys.hasNext()) {
             JSONObject value = loader.optJSONObject(keys.next());
-            if (value != null) return value;
+            if(value==null)continue;
+            if(value.has("homeSections")||value.has("seriesDetail")||value.has("recommendList"))return value;
+            if(fallback==null)fallback=value;
         }
+        if(fallback!=null)return fallback;
         throw new IOException("官网页面数据为空");
     }
     private JSONObject request(String path) throws Exception {
@@ -125,10 +129,52 @@ public final class PublicWebsiteRepository implements ContentServices.CatalogRep
         }
         throw new IOException("官网首页热播榜字段已变化");
     }
-    public List<Drama> category(String route,int page) throws Exception {
-        if(!route.matches("[a-z-]+")) throw new IllegalArgumentException("分类参数无效");
-        return list(request("/category/"+route+(page<=1?"":"?page="+page)).optJSONArray("recommendList"));
+    public static final class CategoryFilter {
+        public final String title,path;
+        CategoryFilter(String title,String path){this.title=title;this.path=path;}
     }
+    public static final class CatalogPage {
+        public final List<Drama> items;
+        public final List<CategoryFilter> filters;
+        public final int page,totalPages,total;
+        public final String path;
+        CatalogPage(List<Drama> items,List<CategoryFilter> filters,int page,int totalPages,int total,String path){
+            this.items=items;this.filters=filters;this.page=page;this.totalPages=totalPages;this.total=total;this.path=path;
+        }
+    }
+    public static String categoryPath(String route,int page){
+        if(route==null||!route.matches("(real-drama|comic-drama|ai-drama)(/[a-z-]+)?")||page<1||page>1000)throw new IllegalArgumentException("分类或页数无效");
+        return "/category/"+route+(page==1?"":"?page="+page);
+    }
+    public CatalogPage catalogPage(String route,int page)throws Exception {
+        return parseCatalogPage(request(categoryPath(route,page)),route);
+    }
+    public static CatalogPage parseCatalogPage(JSONObject source,String route)throws Exception {
+        categoryPath(route,1);
+        if(!source.optBoolean("isSuccess",true))throw new IOException("官网分类读取失败");
+        JSONObject returnedRoute=source.optJSONObject("categoryRoute");
+        if(returnedRoute!=null && !returnedRoute.optString("canonicalPath","/category/"+route).equals("/category/"+route))throw new IOException("官网返回了不同分类");
+        JSONArray array=source.getJSONArray("recommendList");
+        if(array.length()>100)throw new IOException("分类单页返回过多条目");
+        LinkedHashMap<String,Drama> unique=new LinkedHashMap<>();
+        for(int i=0;i<array.length();i++){Drama drama=adapt(array.getJSONObject(i));unique.put(drama.id,drama);}
+        JSONObject pagination=source.getJSONObject("pagination");
+        int page=pagination.getInt("pageNum"),pages=pagination.getInt("totalPages"),total=pagination.getInt("total");
+        if(total==0&&pages==0)pages=1;
+        if(page<1||pages<1||pages>1000||page>pages||total<0)throw new IOException("官网分页信息无效");
+        List<CategoryFilter> filters=new ArrayList<>();String type=route.split("/")[0];
+        filters.add(new CategoryFilter("全部题材",type));
+        JSONArray selectors=source.optJSONArray("selectorList");
+        if(selectors!=null)for(int i=0;i<selectors.length();i++){
+            JSONArray values=selectors.getJSONObject(i).optJSONArray("items");
+            if(values!=null)for(int j=0;j<values.length();j++){
+                JSONObject value=values.getJSONObject(j);String id=value.optString("selector_item_id"),title=value.optString("show_name");
+                if(id.matches("[a-z-]+")&&!title.isEmpty())filters.add(new CategoryFilter(title,type+"/"+id));
+            }
+        }
+        return new CatalogPage(new ArrayList<>(unique.values()),filters,page,pages,total,route);
+    }
+    public List<Drama> category(String route,int page) throws Exception {return catalogPage(route,page).items;}
     public List<String> categories() throws Exception {
         JSONArray selectors=request("/category/real-drama").getJSONArray("selectorList");
         List<String> names=new ArrayList<>();
@@ -173,17 +219,24 @@ public final class PublicWebsiteRepository implements ContentServices.CatalogRep
         return adapt(request("/detail?series_id="+id).getJSONObject("seriesDetail"));
     }
     private final Map<String,ContentServices.Playback> playbackCache = new HashMap<>();
+    private String playbackSession;
+    private void alignPlaybackSession(){
+        String owner=session==null?"":SessionPolicy.header(session.cookie());
+        synchronized(playbackCache){if(!Objects.equals(owner,playbackSession)){playbackCache.clear();playbackSession=owner;}}
+    }
     public ContentServices.Playback resolve(String id,int episode,boolean refresh) throws Exception {
         Drama series = detail(id);
         if (episode < 0 || episode >= series.episodes.size()) throw new IllegalArgumentException("分集序号超出目录");
         return resolveVideo(id, series.episodes.get(episode).videoId, refresh);
     }
-    /** Normal public fallback used by the official site's own public player. Respect declared episode scope. */
+    /** Normal public fallback used by the official site's own public player. Let the service authorize each requested episode. */
     public ContentServices.Playback resolvePublic(String seriesId,int episode,boolean refresh)throws Exception {
         Drama detail=detail(seriesId);
         int accessible=detail.toJson().optInt("accessible_episode_cnt",0);
         if(episode<0||episode>=detail.episodes.size())throw new IllegalArgumentException("分集序号无效");
-        if(episode>=accessible)throw new IOException("本集不在官网声明的公开播放范围内（公开 "+accessible+" 集）；需平台提供对应授权");
+        // The preview count is a display hint, not an authoritative account entitlement.
+        // Only a normal successful playback response grants a usable URL.
+        alignPlaybackSession();
         String videoId=detail.episodes.get(episode).videoId,cacheId="public:"+seriesId+":"+videoId;
         synchronized(playbackCache){ContentServices.Playback cached=playbackCache.get(cacheId);if(!refresh&&cached!=null&&cached.usable(System.currentTimeMillis())){cached.publicEpisodeCount=accessible;return cached;}}
         HttpURLConnection c=(HttpURLConnection)new URL(ORIGIN+"/api/video/protected/fallback-play-info").openConnection();
@@ -192,7 +245,7 @@ public final class PublicWebsiteRepository implements ContentServices.CatalogRep
         byte[] body=new JSONObject().put("item_id",videoId).toString().getBytes(StandardCharsets.UTF_8);c.setFixedLengthStreamingMode(body.length);
         try{
             applySession(c);try(OutputStream out=c.getOutputStream()){out.write(body);}
-            int code=responseCode(c);if(code!=200)throw new IOException("公开播放请求 HTTP "+code);
+            int code=responseCode(c);if(code==403)throw new IOException("官网当前拒绝本集播放（HTTP403），未取得本集媒体地址");if(code!=200)throw new IOException("公开播放请求 HTTP "+code);
             ByteArrayOutputStream out=new ByteArrayOutputStream();
             try(InputStream in=c.getInputStream()){byte[] buf=new byte[4096];int n;while((n=in.read(buf))!=-1){if(out.size()+n>1048576)throw new IOException("公开播放响应过大");out.write(buf,0,n);}}
             ContentServices.Playback p=parsePublicPlayback(new JSONObject(out.toString("UTF-8")),System.currentTimeMillis());p.publicEpisodeCount=accessible;
@@ -207,6 +260,7 @@ public final class PublicWebsiteRepository implements ContentServices.CatalogRep
     }
     public ContentServices.Playback resolveVideo(String seriesId, String videoId, boolean refresh) throws Exception {
         if (!seriesId.matches("[0-9]+") || !videoId.matches("[0-9]+")) throw new IllegalArgumentException("剧集ID无效");
+        alignPlaybackSession();
         String cacheId=seriesId+":"+videoId;
         synchronized(playbackCache) {
             ContentServices.Playback cached=playbackCache.get(cacheId);

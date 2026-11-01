@@ -25,6 +25,7 @@ jobs:
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmdline-tools/16.0/bin:$PATH"
           sdkmanager "build-tools;35.0.0" "platforms;android-35"
           cp "$ANDROID_HOME/build-tools/35.0.0/aapt2" toolbox/aapt2
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/d8.jar" toolbox/d8.jar
           cp "$ANDROID_HOME/build-tools/35.0.0/zipalign" toolbox/zipalign
           cp "$ANDROID_HOME/build-tools/35.0.0/apksigner" toolbox/apksigner
           cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" toolbox/apksigner.jar

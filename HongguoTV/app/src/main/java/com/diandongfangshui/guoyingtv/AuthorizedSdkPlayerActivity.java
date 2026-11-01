@@ -26,7 +26,7 @@ public final class AuthorizedSdkPlayerActivity extends Activity implements Surfa
     private boolean envInitialized;
     private boolean diagnosticLoading;
     private int licenseStatus;
-    private final PublicWebsiteRepository repository = new PublicWebsiteRepository();
+    private PublicWebsiteRepository repository;
     private final android.os.Handler clock = new android.os.Handler(android.os.Looper.getMainLooper());
     private boolean resumeAfterPause;
     private int generation;
@@ -37,6 +37,7 @@ public final class AuthorizedSdkPlayerActivity extends Activity implements Surfa
     private final Runnable progressTick = new Runnable(){public void run(){saveProgress();if(!destroyed)clock.postDelayed(this,5000);}};
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        repository=WebsiteSession.repository(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         LinearLayout page=new LinearLayout(this);page.setOrientation(LinearLayout.VERTICAL);page.setBackgroundColor(0xff10151e);
         status=new TextView(this);status.setTextColor(0xffffffff);status.setTextSize(20);status.setPadding(32,20,32,20);page.addView(status);

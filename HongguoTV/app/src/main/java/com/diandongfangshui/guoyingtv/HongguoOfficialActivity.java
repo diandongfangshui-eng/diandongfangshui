@@ -38,6 +38,7 @@ public final class HongguoOfficialActivity extends Activity {
     private TextView status;
     private WebView browser;
     private View fullscreenVideo;
+    private boolean loginRequested;
     private WebChromeClient.CustomViewCallback videoCallback;
 
     private static boolean isOfficialPage(Uri uri) {
@@ -47,6 +48,22 @@ public final class HongguoOfficialActivity extends Activity {
                 || "www.hongguoduanju.com".equalsIgnoreCase(host);
     }
 
+    private static boolean isLegalPage(Uri uri) {
+        if(uri==null || !"https".equalsIgnoreCase(uri.getScheme()) || !"web.qznovel.com".equalsIgnoreCase(uri.getHost()))return false;
+        return "/wap-hongguo/dr-agreement-v2-ad.html".equals(uri.getPath()) || "/wap-hongguo/dr-privacy-v3-ad.html".equals(uri.getPath());
+    }
+    private void requestLogin() {
+        if(browser==null)return;
+        if(!isOfficialPage(Uri.parse(browser.getUrl()==null?"":browser.getUrl()))){loginRequested=true;loadOfficial(HOME);return;}
+        // Only requests the site's own modal. Does not read inputs, send SMS, accept agreements or submit codes.
+        browser.evaluateJavascript("(function(){var m=document.querySelector('meta[name=viewport]');if(m)m.content='width=1280';window.dispatchEvent(new Event('resize'));var b=Array.from(document.querySelectorAll('button')).find(function(x){return x.textContent.trim()==='登录'});if(b)b.click();else window.dispatchEvent(new CustomEvent('hongguo:pc-open-login',{detail:{}}));return 'requested';})()",null);
+        browser.postDelayed(()->{
+            if(browser==null||isFinishing())return;
+            browser.evaluateJavascript("Boolean(document.querySelector('[role=dialog][aria-label=\"登录红果短剧\"]'))",result->{
+                if(status!=null)status.setText("true".equals(result)?"官网登录弹窗已显示 · 手机号和验证码仅在官网中输入":"官网尚未显示登录弹窗；可尝试页面入口或系统浏览器。登录状态尚未确认。");
+            });
+        },1500);
+    }
     private int dp(int v) {
         return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
     }
@@ -92,6 +109,7 @@ public final class HongguoOfficialActivity extends Activity {
     @SuppressLint("SetJavaScriptEnabled")
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        loginRequested=getIntent().getBooleanExtra("open_login",false);
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         root = new FrameLayout(this);
         root.setBackgroundColor(BG);
@@ -105,10 +123,12 @@ public final class HongguoOfficialActivity extends Activity {
         toolbar.setGravity(Gravity.CENTER_VERTICAL);
         toolbar.setPadding(dp(12), dp(6), dp(12), dp(6));
         toolbar.setBackgroundColor(BG);
-        page.addView(toolbar, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(58)));
+        android.widget.HorizontalScrollView toolbarScroll=new android.widget.HorizontalScrollView(this);
+        toolbarScroll.setHorizontalScrollBarEnabled(false);toolbarScroll.addView(toolbar);
+        page.addView(toolbarScroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,dp(58)));
         addAction(toolbar, "‹ 返回", this::finish);
         addAction(toolbar, "官网首页", () -> loadOfficial(HOME));
+        addAction(toolbar, "手机号登录", this::requestLogin);
         addAction(toolbar, "热播榜", () -> loadOfficial(RANK));
         addAction(toolbar, "真人剧", () -> loadOfficial(DRAMA));
         addAction(toolbar, "后退", () -> { if (browser.canGoBack()) browser.goBack(); });
@@ -141,6 +161,8 @@ public final class HongguoOfficialActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         android.webkit.WebSettings settings = browser.getSettings();
         settings.setJavaScriptEnabled(true);
+        settings.setUseWideViewPort(true);
+        settings.setLoadWithOverviewMode(true);
         settings.setDomStorageEnabled(true);
         settings.setLoadsImagesAutomatically(true);
         settings.setJavaScriptCanOpenWindowsAutomatically(false);
@@ -154,21 +176,24 @@ public final class HongguoOfficialActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 26) {
             settings.setSafeBrowsingEnabled(true);
         }
+        CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(browser, false);
         browser.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest req) {
                 if (!req.isForMainFrame()) return false;
-                if (isOfficialPage(req.getUrl())) return false;
+                if (isOfficialPage(req.getUrl()) || isLegalPage(req.getUrl())) return false;
                 status.setText("已阻止跳转到非红果官网页面");
                 return true;
             }
             @Override public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                if (isOfficialPage(Uri.parse(url))) return false;
+                if (isOfficialPage(Uri.parse(url)) || isLegalPage(Uri.parse(url))) return false;
                 status.setText("已阻止跳转到非红果官网页面");
                 return true;
             }
             @Override public void onPageFinished(WebView view, String url) {
-                status.setText("官网账号/播放页 · WebView可能不支持加密DASH，可尝试系统浏览器");
+                CookieManager.getInstance().flush();
+                status.setText("官网账号/播放页 · 登录和播放器License是两种不同授权");
+                if(loginRequested&&isOfficialPage(Uri.parse(url))){loginRequested=false;view.postDelayed(()->requestLogin(),1000);}
             }
             @Override public void onReceivedError(WebView view, WebResourceRequest req,
                                                   WebResourceError err) {

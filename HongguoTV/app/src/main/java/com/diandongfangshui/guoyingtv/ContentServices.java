@@ -34,6 +34,7 @@ public final class ContentServices {
         // Transient authorization supplied by the content service. Never log or persist this value.
         final String playAuth;
         org.json.JSONObject rawPlayInfo;
+        int publicEpisodeCount;
         public Playback(String url, long expiresAtMs) {
             this(url, expiresAtMs, "", "", "", "", "");
         }

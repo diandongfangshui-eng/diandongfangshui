@@ -11,6 +11,39 @@ public final class PublicWebsiteRepository implements ContentServices.CatalogRep
         ContentServices.SearchRepository, ContentServices.SeriesRepository,
         ContentServices.PlaybackResolver, ContentServices.AuthenticationProvider {
     public static final String ORIGIN = "https://hongguoduanju.com";
+    public interface HttpSession {
+        String cookie(); String userAgent();
+        default void received(Map<String,List<String>> headers){}
+    }
+    private final HttpSession session;
+    public PublicWebsiteRepository(){this(null);}
+    public PublicWebsiteRepository(HttpSession session){this.session=session;}
+    private void applySession(HttpURLConnection c) {
+        if(session==null)return;
+        if(!SessionPolicy.accepts(c.getURL()))throw new SecurityException("禁止将会话发送至其他来源");
+        String cookie=SessionPolicy.header(session.cookie()), ua=SessionPolicy.header(session.userAgent());
+        if(!cookie.isEmpty())c.setRequestProperty("Cookie",cookie);
+        if(!ua.isEmpty())c.setRequestProperty("User-Agent",ua);
+    }
+    private int responseCode(HttpURLConnection c)throws IOException {
+        int code=c.getResponseCode();
+        if(session!=null&&SessionPolicy.accepts(c.getURL()))session.received(c.getHeaderFields());
+        return code;
+    }
+    public JSONObject accountProfile()throws Exception {
+        HttpURLConnection c=(HttpURLConnection)new URL(ORIGIN+"/api/pc/profile").openConnection();
+        c.setConnectTimeout(15000);c.setReadTimeout(20000);c.setInstanceFollowRedirects(false);
+        try {
+            applySession(c);int code=responseCode(c);if(code!=200)throw new IOException("HTTP "+code);
+            ByteArrayOutputStream out=new ByteArrayOutputStream();
+            try(InputStream in=c.getInputStream()){byte[] buffer=new byte[4096];int n;while((n=in.read(buffer))!=-1){if(out.size()+n>262144)throw new IOException("账号响应过大");out.write(buffer,0,n);}}
+            JSONObject response=new JSONObject(out.toString("UTF-8"));
+            if(!response.has("profile"))throw new IOException("官网账号响应结构尚未识别");
+            return response;
+        }finally{c.disconnect();}
+    }
+    public void clearPlaybackCache(){synchronized(playbackCache){playbackCache.clear();}}
+
     public static JSONObject parsePage(String html) throws Exception {
         String marker = "_ROUTER_DATA = ";
         int start = html.indexOf(marker);
@@ -30,7 +63,8 @@ public final class PublicWebsiteRepository implements ContentServices.CatalogRep
         c.setRequestProperty("User-Agent", "GuoyingTV/0.5 PublicWebsiteReader");
         c.setInstanceFollowRedirects(false);
         try {
-            if (c.getResponseCode() != 200) throw new IOException("官网 HTTP " + c.getResponseCode());
+            applySession(c);int status=responseCode(c);
+            if (status != 200) throw new IOException("官网 HTTP " + status);
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             try(InputStream in = c.getInputStream()) {
                 byte[] b = new byte[8192]; int n;
@@ -46,6 +80,7 @@ public final class PublicWebsiteRepository implements ContentServices.CatalogRep
         JSONObject target = new JSONObject();
         target.put("series_id",source.getString("series_id"));
         target.put("episode_cnt",source.optInt("episode_cnt"));
+        target.put("accessible_episode_cnt",source.optInt("accessible_episode_cnt",0));
         target.put("series_episode_count",source.optInt("episode_cnt"));
         target.put("series_title",source.optString("series_title",source.optString("series_name")));
         target.put("series_cover",source.optString("series_cover"));
@@ -54,7 +89,7 @@ public final class PublicWebsiteRepository implements ContentServices.CatalogRep
         if(source.has("accessible_episode_cnt")) info.append("；网页可访问：").append(source.optInt("accessible_episode_cnt")).append("集");
         JSONArray actors=source.optJSONArray("celebrities");
         if(actors!=null) for(int i=0;i<Math.min(actors.length(),8);i++) info.append("\n").append(actors.getJSONObject(i).optString("nickname")).append(" ").append(actors.getJSONObject(i).optString("sub_title"));
-        info.append("\n播放权限由官方网页决定；未获得原生媒体播放授权。");
+        info.append("\n目录不代表全部分集可播；公开范围以服务返回为准。");
         target.put("description",info.toString());
         JSONArray cats=source.optJSONArray("category_list"),tags=source.optJSONArray("tags");
         target.put("category",cats!=null && cats.length()>0?cats.getJSONObject(0).optString("name","官网"):tags!=null && tags.length()>0?tags.optString(0):"官网");
@@ -109,7 +144,7 @@ public final class PublicWebsiteRepository implements ContentServices.CatalogRep
         HttpURLConnection c=(HttpURLConnection)new URL(ORIGIN+"/api/search/suggestion?query="+URLEncoder.encode(keyword.trim(),"UTF-8")).openConnection();
         c.setConnectTimeout(15000);c.setReadTimeout(20000);c.setInstanceFollowRedirects(false);
         try {
-            int status=c.getResponseCode();
+            applySession(c);int status=responseCode(c);
             if(status!=200)throw new IOException("官网关键词建议 HTTP "+status+"；完整搜索可能需要官方验证");
             ByteArrayOutputStream out=new ByteArrayOutputStream();
             try(InputStream in=c.getInputStream()) {
@@ -143,6 +178,33 @@ public final class PublicWebsiteRepository implements ContentServices.CatalogRep
         if (episode < 0 || episode >= series.episodes.size()) throw new IllegalArgumentException("分集序号超出目录");
         return resolveVideo(id, series.episodes.get(episode).videoId, refresh);
     }
+    /** Normal public fallback used by the official site's own public player. Respect declared episode scope. */
+    public ContentServices.Playback resolvePublic(String seriesId,int episode,boolean refresh)throws Exception {
+        Drama detail=detail(seriesId);
+        int accessible=detail.toJson().optInt("accessible_episode_cnt",0);
+        if(episode<0||episode>=detail.episodes.size())throw new IllegalArgumentException("分集序号无效");
+        if(episode>=accessible)throw new IOException("本集不在官网声明的公开播放范围内（公开 "+accessible+" 集）；需平台提供对应授权");
+        String videoId=detail.episodes.get(episode).videoId,cacheId="public:"+seriesId+":"+videoId;
+        synchronized(playbackCache){ContentServices.Playback cached=playbackCache.get(cacheId);if(!refresh&&cached!=null&&cached.usable(System.currentTimeMillis())){cached.publicEpisodeCount=accessible;return cached;}}
+        HttpURLConnection c=(HttpURLConnection)new URL(ORIGIN+"/api/video/protected/fallback-play-info").openConnection();
+        c.setConnectTimeout(15000);c.setReadTimeout(20000);c.setInstanceFollowRedirects(false);c.setRequestMethod("POST");c.setDoOutput(true);
+        c.setRequestProperty("Content-Type","application/json; charset=utf-8");
+        byte[] body=new JSONObject().put("item_id",videoId).toString().getBytes(StandardCharsets.UTF_8);c.setFixedLengthStreamingMode(body.length);
+        try{
+            applySession(c);try(OutputStream out=c.getOutputStream()){out.write(body);}
+            int code=responseCode(c);if(code!=200)throw new IOException("公开播放请求 HTTP "+code);
+            ByteArrayOutputStream out=new ByteArrayOutputStream();
+            try(InputStream in=c.getInputStream()){byte[] buf=new byte[4096];int n;while((n=in.read(buf))!=-1){if(out.size()+n>1048576)throw new IOException("公开播放响应过大");out.write(buf,0,n);}}
+            ContentServices.Playback p=parsePublicPlayback(new JSONObject(out.toString("UTF-8")),System.currentTimeMillis());p.publicEpisodeCount=accessible;
+            synchronized(playbackCache){if(playbackCache.size()>16)playbackCache.clear();playbackCache.put(cacheId,p);}return p;
+        }finally{c.disconnect();}
+    }
+    public static ContentServices.Playback parsePublicPlayback(JSONObject response,long now)throws Exception {
+        if(response.getJSONObject("base_resp").getInt("StatusCode")!=0)throw new IOException("平台未提供该分集的公开播放权限");
+        long expiry=response.getLong("url_expire");if(expiry<=0||expiry>Long.MAX_VALUE/1000)throw new IOException("公开播放有效期无效");
+        ContentServices.Playback p=new ContentServices.Playback(response.getString("main_url"),expiry*1000,"","","mp4","","");
+        if(!p.usable(now))throw new IOException("公开播放地址已过期");return p;
+    }
     public ContentServices.Playback resolveVideo(String seriesId, String videoId, boolean refresh) throws Exception {
         if (!seriesId.matches("[0-9]+") || !videoId.matches("[0-9]+")) throw new IllegalArgumentException("剧集ID无效");
         String cacheId=seriesId+":"+videoId;
@@ -157,8 +219,9 @@ public final class PublicWebsiteRepository implements ContentServices.CatalogRep
         byte[] body=new JSONObject().put("series_id",seriesId).put("item_id",videoId).put("definition","720p").toString().getBytes(StandardCharsets.UTF_8);
         c.setFixedLengthStreamingMode(body.length);
         try {
+            applySession(c);
             try(OutputStream out=c.getOutputStream()) {out.write(body);}
-            int status=c.getResponseCode();
+            int status=responseCode(c);
             if(status!=200)throw new IOException("播放授权请求 HTTP "+status);
             ByteArrayOutputStream out=new ByteArrayOutputStream();
             try(InputStream in=c.getInputStream()) {

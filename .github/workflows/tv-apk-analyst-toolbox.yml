@@ -17,13 +17,12 @@ jobs:
           mkdir -p toolbox
           curl --fail --location --retry 3 --output toolbox/apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar
           java -jar toolbox/apktool.jar --version
-      - name: Install Android command line tools
-        uses: android-actions/setup-android@v3
       - name: Export required tools
         shell: bash
         run: |
           set -euo pipefail
-          yes | sdkmanager --licenses >/dev/null || true
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmdline-tools/16.0/bin:$PATH"
           sdkmanager "build-tools;35.0.0" "platforms;android-35"
           cp "$ANDROID_HOME/build-tools/35.0.0/aapt2" toolbox/aapt2
           cp "$ANDROID_HOME/build-tools/35.0.0/zipalign" toolbox/zipalign

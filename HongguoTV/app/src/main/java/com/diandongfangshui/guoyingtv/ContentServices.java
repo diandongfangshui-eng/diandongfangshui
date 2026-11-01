@@ -30,11 +30,25 @@ public final class ContentServices {
     public static final class Playback {
         public final String url;
         public final long expiresAtMs;
+        public final String audioUrl, backupUrl, format, definition;
+        // Transient authorization supplied by the content service. Never log or persist this value.
+        final String playAuth;
+        org.json.JSONObject rawPlayInfo;
         public Playback(String url, long expiresAtMs) {
+            this(url, expiresAtMs, "", "", "", "", "");
+        }
+        public Playback(String url, long expiresAtMs, String audioUrl, String backupUrl,
+                        String format, String definition, String playAuth) {
             if (!UrlPolicy.isHttpsUrl(url)) throw new IllegalArgumentException("媒体地址必须为 HTTPS");
             this.url = url;
             this.expiresAtMs = expiresAtMs;
+            this.audioUrl = audioUrl;
+            this.backupUrl = backupUrl;
+            this.format = format;
+            this.definition = definition;
+            this.playAuth = playAuth;
         }
+        public boolean requiresAuthorizedDecoder() { return !playAuth.isEmpty(); }
         public boolean usable(long nowMs) { return expiresAtMs == 0 || expiresAtMs > nowMs + 30000; }
     }
 }

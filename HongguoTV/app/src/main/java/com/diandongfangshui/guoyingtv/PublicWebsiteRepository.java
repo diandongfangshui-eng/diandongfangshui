@@ -137,8 +137,57 @@ public final class PublicWebsiteRepository implements ContentServices.CatalogRep
         if(!id.matches("[0-9]+"))throw new IllegalArgumentException("剧集ID无效");
         return adapt(request("/detail?series_id="+id).getJSONObject("seriesDetail"));
     }
+    private final Map<String,ContentServices.Playback> playbackCache = new HashMap<>();
     public ContentServices.Playback resolve(String id,int episode,boolean refresh) throws Exception {
-        throw new IOException("protectedPlayback：实际播放接口返回加密 DASH，需获授权的专用解码组件，通用Media3尚不能播放");
+        Drama series = detail(id);
+        if (episode < 0 || episode >= series.episodes.size()) throw new IllegalArgumentException("分集序号超出目录");
+        return resolveVideo(id, series.episodes.get(episode).videoId, refresh);
+    }
+    public ContentServices.Playback resolveVideo(String seriesId, String videoId, boolean refresh) throws Exception {
+        if (!seriesId.matches("[0-9]+") || !videoId.matches("[0-9]+")) throw new IllegalArgumentException("剧集ID无效");
+        String cacheId=seriesId+":"+videoId;
+        synchronized(playbackCache) {
+            ContentServices.Playback cached=playbackCache.get(cacheId);
+            if(!refresh && cached!=null && cached.usable(System.currentTimeMillis()))return cached;
+        }
+        HttpURLConnection c=(HttpURLConnection)new URL(ORIGIN+"/api/video/protected/play-info").openConnection();
+        c.setConnectTimeout(15000);c.setReadTimeout(20000);c.setInstanceFollowRedirects(false);
+        c.setRequestMethod("POST");c.setDoOutput(true);
+        c.setRequestProperty("Content-Type","application/json; charset=utf-8");
+        byte[] body=new JSONObject().put("series_id",seriesId).put("item_id",videoId).put("definition","720p").toString().getBytes(StandardCharsets.UTF_8);
+        c.setFixedLengthStreamingMode(body.length);
+        try {
+            try(OutputStream out=c.getOutputStream()) {out.write(body);}
+            int status=c.getResponseCode();
+            if(status!=200)throw new IOException("播放授权请求 HTTP "+status);
+            ByteArrayOutputStream out=new ByteArrayOutputStream();
+            try(InputStream in=c.getInputStream()) {
+                byte[] buffer=new byte[8192];int n;
+                while((n=in.read(buffer))!=-1) {if(out.size()+n>1024*1024)throw new IOException("播放响应过大");out.write(buffer,0,n);}
+            }
+            ContentServices.Playback result=parsePlayback(new JSONObject(out.toString("UTF-8")),System.currentTimeMillis());
+            synchronized(playbackCache) { if(playbackCache.size()>16)playbackCache.clear();playbackCache.put(cacheId,result); }
+            return result;
+        } finally {c.disconnect();}
+    }
+    /** Parses normal service authorization, preserving encrypted media as encrypted. Does not unwrap keys. */
+    public static ContentServices.Playback parsePlayback(JSONObject response, long nowMs) throws Exception {
+        JSONObject status=response.getJSONObject("base_resp");
+        int code=status.getInt("StatusCode");
+        if(code!=0)throw new IOException("内容服务未授予播放权限，错误码 "+code);
+        JSONObject p=response.getJSONObject("play_info");
+        long seconds=p.optLong("expires_at",0);
+        if(seconds<=0 || seconds>Long.MAX_VALUE/1000)throw new IOException("播放授权有效期无效");
+        String audio="";
+        JSONObject a=p.optJSONObject("audio");
+        if(a!=null)audio=a.optString("main_url","");
+        if(!audio.isEmpty()&&!UrlPolicy.isHttpsUrl(audio))throw new IOException("音频地址无效");
+        ContentServices.Playback result=new ContentServices.Playback(p.getString("main_url"),seconds*1000,
+                audio,p.optString("backup_url",""),p.optString("format",""),p.optString("definition",""),p.optString("player_access_key",""));
+        result.rawPlayInfo = p;
+        if(!result.usable(nowMs))throw new IOException("播放授权已过期，请刷新");
+        if("dash".equals(result.format) && result.playAuth.isEmpty())throw new IOException("加密DASH缺少播放器授权凭据");
+        return result;
     }
     public String status(){return "官网公开访客；官方 App 账号授权尚未接入";}
     public boolean canSynchronize(){return false;}

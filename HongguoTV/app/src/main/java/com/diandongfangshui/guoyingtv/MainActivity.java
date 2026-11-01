@@ -457,11 +457,11 @@ public final class MainActivity extends Activity {
                 web.putExtra("official_url", "https://hongguoduanju.com/player/" + drama.id);
                 startActivity(web);
             }));
-            info.addView(text("官网返回加密 DASH；原生播放器尚缺获授权的解码组件。网页播放受浏览器兼容性限制。", 14, MUTED, false));
+            info.addView(text("原生SDK播放需要绑定本应用的有效播放器License；内容权限以服务返回为准。", 14, MUTED, false));
         }
         int saved = CatalogStore.prefs(this).getInt("last_" + drama.id, 0);
         if (saved < 0 || saved >= drama.episodes.size()) saved = 0;
-        final int resumeIndex = drama.firstPlayableEpisode(saved);
+        final int resumeIndex = publicCatalog ? saved : drama.firstPlayableEpisode(saved);
         TextView play = button(resumeIndex >= 0
                 ? "▶  播放 / 继续第 " + drama.episodes.get(resumeIndex).episodeIndex + " 集"
                 : "尚未取得授权播放地址",
@@ -486,12 +486,20 @@ public final class MainActivity extends Activity {
         favParams.topMargin = dp(10);
         info.addView(favorite, favParams);
         if (drama.metadataAdapter) {
-            TextView note = text(drama.hasPlayableEpisodes()
+            TextView note = text(publicCatalog ? "已接入正常播放模型请求；SDK授权状态在原生播放页检查。" : drama.hasPlayableEpisodes()
                     ? "导入的剧集已配置独立授权播放地址。"
                     : "仅有剧集元数据：video_id 不是可播放 URL。", 14,
                     Color.rgb(255, 202, 139), false);
             note.setPadding(0, dp(12), 0, 0);
             info.addView(note);
+        }
+        if (publicCatalog) {
+            info.addView(button("原生SDK播放 / 授权诊断", () -> {
+                int index = Math.max(0, Math.min(CatalogStore.prefs(this).getInt("last_" + drama.id, 0), drama.episodes.size() - 1));
+                Intent sdk = new Intent(this, AuthorizedSdkPlayerActivity.class);
+                sdk.putExtra("series_id", drama.id); sdk.putExtra("video_id", drama.episodes.get(index).videoId); sdk.putExtra("episode_index", index);
+                startActivity(sdk);
+            }));
         }
         sectionTitle(col, "选择剧集");
         LinearLayout episodes = vertical();
@@ -632,9 +640,10 @@ public final class MainActivity extends Activity {
         if (episode < 0 || episode >= drama.episodes.size()
                 || !drama.episodes.get(episode).isPlayable()) {
             if (publicCatalog && episode >= 0 && episode < drama.episodes.size()) {
-                Intent web = new Intent(this, HongguoOfficialActivity.class);
-                web.putExtra("official_url", "https://hongguoduanju.com/player/" + drama.id + "/" + drama.episodes.get(episode).videoId);
-                startActivity(web);
+                Intent sdk = new Intent(this, AuthorizedSdkPlayerActivity.class);
+                sdk.putExtra("series_id", drama.id);
+                sdk.putExtra("video_id", drama.episodes.get(episode).videoId); sdk.putExtra("episode_index", episode);
+                startActivity(sdk);
             } else Toast.makeText(this, "本集尚无授权的 HTTPS 媒体地址", Toast.LENGTH_LONG).show();
             return;
         }

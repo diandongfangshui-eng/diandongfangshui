@@ -1,27 +1,34 @@
-# 果影 TV：0.5.0：真实官网目录与关键词建议（个人测试）
+# 果影 TV 0.6.0
 
-首次启动直接读取 https://hongguoduanju.com/ 真实公开页面数据，不需要填写 JSON，也不需要电脑、NAS或局域网代理。Android 6.0+，横屏与电视遥控器操作。
+独立Android TV Java工程，首次启动读取红果官网真实目录，不需要JSON片单、电脑或NAS。支持首页、热播、分类分页、真实详情、完整返回的分集目录、官网关键词建议与本地收藏。
 
-当前已实现官网实时首页、官网热播短剧、返回题材分组、真人剧分页、详情、演员资料（网站有返回时）、完整分集ID目录、本地收藏。选集进入官方网页播放器，由网站决定可访问范围。正常播放接口可返回带有效期的加密DASH地址，但需要官方专用解码组件，不能宣称当前Media3可播或完整片库已获授权。
+本版新增真实播放模型请求、有效期缓存、强制刷新，以及公开下载的官方Android播放器SDK。分离DASH模型按SDK实际结构映射，播放凭据只在内存中传递。未从原版复制SDK、应用身份或License。
 
-完整分页关键词搜索、App账号授权、App历史同步、私有播放授权、DRM与全剧原生连播尚未实现。搜索已接入官网关键词建议，输入“退役”实际返回2部剧；完整结果接口仍403，界面不把建议当作完整搜索。原有Media3播放器可用于另行提供的授权HTTPS MP4/HLS片源，具备遥控快退快进、倍速、自动下一集、本地断点和最多两次失败重试；不适用于当前官网专用加密DASH媒体。
+## 实测状态
 
-目录来源是运行时公开网站，不是内置测试片单。上游HTML结构、地区策略或访问权限变化会导致加载失败，界面提供错误和重试。测试fixtures只用于单元测试，不作为产品数据回退。
+- 正常播放API、缓存命中与强制重取已通过真实网络测试。
+- TV API36模拟器中实际加载ARM SDK库，License返回0：本应用尚无有效授权。
+- 实际SDK解析真实响应：视频轨1、音频轨1，均加密，DASH=true。
+- 25项自动测试通过。模型解析成功不代表解密或首帧成功。
+- 完整搜索结果接口仍403；当前是官网关键词建议，不是完整分页搜索。App登录/跨设备同步尚未接入。
 
-## 安装和操作
+## 安装与操作
 
-将 GuoyingTV-debug.apk 拷贝到电视或盒子，通过文件管理器安装；或运行 `adb install -r GuoyingTV-debug.apk`。如已装同包名但签名不同的旧版，需要先备份记录再卸载旧版，或使用相同签名重建。
+安装GuoyingTV-debug.apk，或adb install -r GuoyingTV-debug.apk。本版包含的官方原生库面向arm64-v8a/armeabi-v7a，未提供x86客户端。
 
-遥控器方向键移动，确定键打开剧集。详情中选集打开官网播放页，菜单键将焦点移到网页工具栏，返回键后退或退出。官网播放器兼容性依赖电视Android System WebView，尚未真机验收。
+方向键导航、确定选集。原生播放页先检查本应用SDK授权；也可独立检查真实模型而不播放。已接入原生遥控器左右10秒、确定暂停/继续、菜单倍速、上下切集、完成后下一集、5秒保存进度及返回后恢复的代码，但尚无有效License，因此这些原生解码与播放行为未完成实际验收。官网网页入口保留，受官方浏览器支持范围影响。
 
-独立授权Media3片源模式：左右快进快退10秒，上下切集，确定暂停/继续，菜单切换倍速，返回退出。本地记录与官网网页记录分别管理，不能跨播放器同步。
+## 配置自己的正式播放器授权
 
-## 编译
+需要控制台绑定本应用包名com.diandongfangshui.guoyingtv的AppID和有效License，并确认内容方允许该客户端播放相应内容。通用播放器License不自动授予红果片库内容权限。
 
-Android Studio 打开本目录；JDK17+、SDK35。Windows运行 `gradlew.bat :app:testDebugUnitTest :app:assembleDebug`，其他系统 `sh gradlew :app:testDebugUnitTest :app:assembleDebug`。首次需要网络下载依赖，SDK路径由本机Android Studio配置。APK输出 app/build/outputs/apk/debug/app-debug.apk。
+将自己的文件放入app/src/main/assets/license/vod.lic（已gitignore）；构建参数为-PvodAppId=自己的AppID。Env使用License成功回调重查授权，不将异步加载中的0当作最终失败。License/播放凭据不得提交GitHub。
 
-仓库 HongguoTV 是独立子工程，不修改MoaanXReader。隔离开发分支 hongguo-tv-rea-native。源码包内根目录工作流可用于新仓库，原仓库工作流位于仓库根 .github/workflows/guoying-tv.yml。
+Windows：gradlew.bat -PvodAppId=自己的AppID :app:testDebugUnitTest :app:assembleDebug
+其他系统：sh gradlew -PvodAppId=自己的AppID :app:testDebugUnitTest :app:assembleDebug
+未配置该参数仍可编译浏览目录与授权诊断版，但不能宣称可以解密播放。
 
-单元测试包含真实官网响应摘取解析、模型适配、访问限制、过期时间、重试和进度策略；通过单元测试和构建不代表完成真机端到端播放验收。
+官方说明：https://docs.volcengine.com/docs/video-on-demand/android-player-license-validation?lang=en
+SDK依赖来源：https://artifact.bytedance.com/repository/Volcengine/
 
-0.5.0 新增设置中的官网账号登录/验证入口与网页工具栏“系统浏览器”。未伪装浏览器标识；官网代码对标准WebView有限制，入口存在不代表账号授权或播放已经通过验收。
+项目不修改MoaanXReader。原版App在当前ARM翻译模拟器中接受协议后发生native崩溃，无法用该环境完成原版未登录播放参照；详情见独立验收材料。

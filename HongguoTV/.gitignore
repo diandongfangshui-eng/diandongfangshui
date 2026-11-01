@@ -6,3 +6,6 @@ local.properties
 *.iml
 *.keystore
 *.jks
+
+# Application-bound vendor licenses stay local.
+app/src/main/assets/license/*.lic

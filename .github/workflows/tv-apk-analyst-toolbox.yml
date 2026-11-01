@@ -1,0 +1,39 @@
+name: Android TV APK analyst toolchain
+on:
+  workflow_dispatch:
+  push:
+    branches: [hongguo-tv-standalone]
+    paths: ['.github/workflows/tv-apk-analyst-toolbox.yml']
+permissions:
+  contents: read
+jobs:
+  toolbox:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install prebuilt Apktool
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p toolbox
+          curl --fail --location --retry 3 --output toolbox/apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.11.1/apktool_2.11.1.jar
+          java -jar toolbox/apktool.jar --version
+      - name: Install Android command line tools
+        uses: android-actions/setup-android@v3
+      - name: Export required tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "build-tools;35.0.0" "platforms;android-35"
+          cp "$ANDROID_HOME/build-tools/35.0.0/aapt2" toolbox/aapt2
+          cp "$ANDROID_HOME/build-tools/35.0.0/zipalign" toolbox/zipalign
+          cp "$ANDROID_HOME/build-tools/35.0.0/apksigner" toolbox/apksigner
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" toolbox/apksigner.jar
+          cp "$ANDROID_HOME/platforms/android-35/android.jar" toolbox/android.jar
+          printf '%s\n' 'Android APK resources and signing tools bundle' > toolbox/README.txt
+      - name: Publish toolchain
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-APK-analysis-toolchain
+          path: toolbox/
+          retention-days: 3
